@@ -17,7 +17,6 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulati
     <div className="mt-3 pt-2.5 border-t border-rule-subtle flex flex-wrap items-center gap-2 text-xs font-mono">
       {/* Required meta-source */}
       <span
-        data-testid="meta-source"
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-[11px] font-medium border transition-colors ${
           isCache
             ? 'bg-cool-soft text-cool border-cool/30'
@@ -25,25 +24,19 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulati
         }`}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${isCache ? 'bg-cool' : 'bg-ok'}`} />
-        <span>{metadata.resolution_source}</span>
+        <span data-testid="meta-source">{metadata.resolution_source}</span>
       </span>
 
       {/* Required meta-model */}
-      <span
-        data-testid="meta-model"
-        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] font-mono tracking-tight"
-      >
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] font-mono tracking-tight">
         <span className="text-ink-subtle">model</span>
-        <span className="text-ink">{metadata.model}</span>
+        <span data-testid="meta-model" className="text-ink">{metadata.model}</span>
       </span>
 
       {/* Required meta-latency */}
-      <span
-        data-testid="meta-latency"
-        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] tabular-nums"
-      >
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] tabular-nums">
         <span className="text-ink-subtle">latency</span>
-        <span className="text-ink font-medium">{metadata.latency_ms} ms</span>
+        <span data-testid="meta-latency" className="text-ink font-medium">{metadata.latency_ms} ms</span>
       </span>
 
       {/* Required meta-input-tokens */}

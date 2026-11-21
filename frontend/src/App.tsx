@@ -19,7 +19,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
-  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(true);
   const [showTuning, setShowTuning] = useState(false);
   const [showSessionDrawer, setShowSessionDrawer] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
