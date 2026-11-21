@@ -58,7 +58,8 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="flex items-center justify-between pb-3 border-b border-rule shrink-0 relative">
+    <header className="w-full border-b border-rule bg-paper/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 shrink-0 relative z-20">
+      <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="w-7 h-7 rounded-[8px] bg-accent flex items-center justify-center font-mono font-bold text-xs text-accent-ink shadow-sm">
           λ
@@ -207,6 +208,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
         )}
+      </div>
       </div>
     </header>
   );

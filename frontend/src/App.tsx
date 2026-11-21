@@ -213,7 +213,7 @@ export function App() {
   ];
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto px-4 py-3 sm:py-6 text-ink">
+    <div className="flex flex-col h-screen h-[100dvh] w-full min-h-screen bg-paper text-ink overflow-hidden">
       <Header
         sessionId={sessionId}
         health={health}
@@ -229,110 +229,114 @@ export function App() {
         onToggleTheme={toggleTheme}
       />
 
-      {showTuning && (
-        <TuningDrawer
-          temperature={temperature}
-          maxTokens={maxTokens}
-          onTemperatureChange={setTemperature}
-          onMaxTokensChange={setMaxTokens}
-        />
-      )}
-
-      {showSystemPrompt && (
-        <div className="mt-2.5 p-3 bg-paper-2/80 border border-rule-subtle rounded-[12px] animate-apple-entrance text-xs">
-          <label className="block text-ink-muted font-medium mb-1.5">
-            System prompt override:
-          </label>
-          <input
-            data-testid="system-prompt-input"
-            type="text"
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            placeholder="e.g. You are a concise geography professor."
-            className="w-full bg-paper-3 border border-rule rounded-[8px] px-3 py-2 text-ink placeholder-ink-subtle focus:outline-none focus:border-rule-2 font-mono text-xs transition-colors"
-          />
-          <PromptPresets onSelectPreset={setSystemPrompt} />
-        </div>
-      )}
-
-      <div className="mt-2.5">
-        <FailoverTester currentRule={simulateRule} onSelectRule={setSimulateRule} />
-      </div>
-
-      {errorBanner && (
-        <div className="mt-2.5 px-3.5 py-2.5 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-ink flex items-center justify-between animate-apple-entrance">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-bad shrink-0" />
-            <span>{errorBanner}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setErrorBanner(null)}
-            className="text-[11px] font-mono text-ink-subtle hover:text-ink transition-colors"
-          >
-            dismiss
-          </button>
-        </div>
-      )}
-
-      {isWakingColdStart && (
-        <div className="mt-2 px-3 py-2 bg-cool-soft/60 border border-cool/30 rounded-[10px] text-xs font-mono text-ink flex items-center gap-2 animate-apple-entrance">
-          <span className="w-2 h-2 rounded-full bg-cool animate-apple-pulse shrink-0" />
-          <span>Waking up cloud backend (Render spin-up takes ~30s on free tier)...</span>
-        </div>
-      )}
-
       <main
         ref={mainRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto my-3 sm:my-4 pr-1 sm:pr-2 space-y-4"
+        className="flex-1 overflow-y-auto w-full flex flex-col"
       >
-        {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 sm:p-10 text-ink-muted max-w-md mx-auto animate-apple-entrance">
-            <div className="w-12 h-12 rounded-2xl bg-paper-2 border border-rule flex items-center justify-center mb-4 shadow-sm">
-              <span className="font-mono text-accent text-xl font-semibold">λ</span>
-            </div>
-            <h2 className="text-base font-semibold text-ink mb-1.5 tracking-tight font-display">
-              Resilient intelligence.
-            </h2>
-            <p className="text-xs text-ink-subtle leading-relaxed mb-6 font-body">
-              Fault-tolerant multi-provider gateway with autonomous key rotation, local caching, and SQLite session persistence.
-            </p>
-
-            <div className="grid grid-cols-1 gap-2 w-full text-xs font-mono">
-              {STARTER_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => handleSend(undefined, prompt)}
-                  className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          messages.map((msg, idx) => (
-            <MessageItem
-              key={msg.id}
-              message={msg}
-              cumulativeTokens={cumulativeTokens}
-              onRegenerate={idx === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
+        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-3 pb-4 flex-1 flex flex-col">
+          {showTuning && (
+            <TuningDrawer
+              temperature={temperature}
+              maxTokens={maxTokens}
+              onTemperatureChange={setTemperature}
+              onMaxTokensChange={setMaxTokens}
             />
-          ))
-        )}
+          )}
 
-        {/* "Thinking" indicator until the first words of the reply arrive */}
-        {isLoading && !messages.some((m) => m.isStreaming) && (
-          <div className="flex justify-start mb-4 animate-apple-entrance">
-            <div className="flex gap-2.5 max-w-[85%] items-center bg-paper-2/90 border border-rule px-4 py-3 rounded-[14px] rounded-bl-[4px] text-xs text-ink-muted">
-              <span className="w-2 h-2 rounded-full bg-accent animate-apple-blink" />
-              <span>Resolving response via LiteLLM gateway...</span>
+          {showSystemPrompt && (
+            <div className="mt-2.5 p-3 bg-paper-2/80 border border-rule-subtle rounded-[12px] animate-apple-entrance text-xs shrink-0">
+              <label className="block text-ink-muted font-medium mb-1.5">
+                System prompt override:
+              </label>
+              <input
+                data-testid="system-prompt-input"
+                type="text"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="e.g. You are a concise geography professor."
+                className="w-full bg-paper-3 border border-rule rounded-[8px] px-3 py-2 text-ink placeholder-ink-subtle focus:outline-none focus:border-rule-2 font-mono text-xs transition-colors"
+              />
+              <PromptPresets onSelectPreset={setSystemPrompt} />
             </div>
+          )}
+
+          <div className="mt-2.5 shrink-0">
+            <FailoverTester currentRule={simulateRule} onSelectRule={setSimulateRule} />
           </div>
-        )}
-        <div ref={messagesEndRef} />
+
+          {errorBanner && (
+            <div className="mt-2.5 px-3.5 py-2.5 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-ink flex items-center justify-between animate-apple-entrance shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-bad shrink-0" />
+                <span>{errorBanner}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorBanner(null)}
+                className="text-[11px] font-mono text-ink-subtle hover:text-ink transition-colors"
+              >
+                dismiss
+              </button>
+            </div>
+          )}
+
+          {isWakingColdStart && (
+            <div className="mt-2 px-3 py-2 bg-cool-soft/60 border border-cool/30 rounded-[10px] text-xs font-mono text-ink flex items-center gap-2 animate-apple-entrance shrink-0">
+              <span className="w-2 h-2 rounded-full bg-cool animate-apple-pulse shrink-0" />
+              <span>Waking up cloud backend (Render spin-up takes ~30s on free tier)...</span>
+            </div>
+          )}
+
+          <div className="flex-1 my-3 sm:my-4 space-y-4">
+            {messages.length === 0 ? (
+              <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-6 sm:p-10 text-ink-muted max-w-md mx-auto animate-apple-entrance">
+                <div className="w-12 h-12 rounded-2xl bg-paper-2 border border-rule flex items-center justify-center mb-4 shadow-sm">
+                  <span className="font-mono text-accent text-xl font-semibold">λ</span>
+                </div>
+                <h2 className="text-base font-semibold text-ink mb-1.5 tracking-tight font-display">
+                  Resilient intelligence.
+                </h2>
+                <p className="text-xs text-ink-subtle leading-relaxed mb-6 font-body">
+                  Fault-tolerant multi-provider gateway with autonomous key rotation, local caching, and SQLite session persistence.
+                </p>
+
+                <div className="grid grid-cols-1 gap-2 w-full text-xs font-mono">
+                  {STARTER_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => handleSend(undefined, prompt)}
+                      className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((msg, idx) => (
+                <MessageItem
+                  key={msg.id}
+                  message={msg}
+                  cumulativeTokens={cumulativeTokens}
+                  onRegenerate={idx === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
+                />
+              ))
+            )}
+
+            {/* "Thinking" indicator until the first words of the reply arrive */}
+            {isLoading && !messages.some((m) => m.isStreaming) && (
+              <div className="flex justify-start mb-4 animate-apple-entrance">
+                <div className="flex gap-2.5 max-w-[85%] items-center bg-paper-2/90 border border-rule px-4 py-3 rounded-[14px] rounded-bl-[4px] text-xs text-ink-muted">
+                  <span className="w-2 h-2 rounded-full bg-accent animate-apple-blink" />
+                  <span>Resolving response via LiteLLM gateway...</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
       </main>
 
       <ChatInput
