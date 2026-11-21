@@ -1,5 +1,5 @@
 import time
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.database import get_db
@@ -10,10 +10,15 @@ import litellm
 router = APIRouter(tags=["Health"])
 
 @router.get("/health", response_model=HealthResponse)
-def get_health(db: Session = Depends(get_db)):
+def get_health(response: Response, db: Session = Depends(get_db)):
     """
     Returns 200 once the app is running, the database is reachable, and the key pool is loaded.
+    Prevents browsers (Safari) from caching cold-start responses.
     """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
     try:
         db.execute(text("SELECT 1"))
     except Exception:

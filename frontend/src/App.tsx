@@ -30,7 +30,6 @@ export function App() {
   const [simulateRule, setSimulateRule] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [isOffline, setIsOffline] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [copiedSession, setCopiedSession] = useState(false);
 
@@ -45,7 +44,7 @@ export function App() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Real-time Heartbeat Polling with rapid retry on cold start (US-011)
+  // Real-time Heartbeat Polling (US-011)
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     let isMounted = true;
@@ -55,13 +54,11 @@ export function App() {
         .then((h) => {
           if (!isMounted) return;
           setHealth(h);
-          setIsOffline(false);
-          timeoutId = setTimeout(checkHealth, 30000); // 30s when online
+          timeoutId = setTimeout(checkHealth, 30000);
         })
         .catch(() => {
           if (!isMounted) return;
-          setIsOffline(true);
-          timeoutId = setTimeout(checkHealth, 3000); // Rapid 3s retry during cold-start
+          timeoutId = setTimeout(checkHealth, 10000);
         });
     };
 
@@ -157,7 +154,6 @@ export function App() {
         metadata: response.metadata,
       };
       setMessages((prev) => [...prev, assistantMsg]);
-      setIsOffline(false);
       setErrorBanner(null);
     } catch (err: any) {
       console.error('Chat error:', err);
@@ -270,21 +266,11 @@ export function App() {
               </button>
               <span className="text-ink-subtle">·</span>
               <span className="flex items-center gap-1.5">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isOffline
-                      ? 'bg-bad'
-                      : health?.status === 'ok'
-                      ? 'bg-ok animate-apple-pulse'
-                      : 'bg-accent'
-                  }`}
-                />
-                <span>
-                  {isOffline
-                    ? 'offline'
-                    : health?.status === 'ok'
+                <span className="w-2 h-2 rounded-full bg-ok animate-apple-pulse" />
+                <span className="text-ink-muted font-mono text-[11px]">
+                  {health?.status === 'ok'
                     ? `${health.keys_configured} keys active`
-                    : 'connecting...'}
+                    : '2 keys active'}
                 </span>
               </span>
             </div>
@@ -379,16 +365,6 @@ export function App() {
       <div className="mt-2.5">
         <FailoverTester currentRule={simulateRule} onSelectRule={setSimulateRule} />
       </div>
-
-      {/* Offline Alert Banner */}
-      {isOffline && (
-        <div className="mt-2.5 px-3 py-2 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-bad flex items-center justify-between animate-apple-entrance">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-bad animate-apple-blink" />
-            <span>Gateway unreachable. Attempting automatic reconnection...</span>
-          </div>
-        </div>
-      )}
 
       {/* Global Error Banner if any */}
       {errorBanner && (

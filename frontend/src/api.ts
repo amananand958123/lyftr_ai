@@ -8,7 +8,12 @@ const API_BASE_URL = (
 ).replace(/\/+$/, '');
 
 export async function fetchHealth(): Promise<HealthStatus> {
-  const res = await fetch(`${API_BASE_URL}/health`);
+  const res = await fetch(`${API_BASE_URL}/health?_t=${Date.now()}`, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache',
+    },
+  });
   if (!res.ok) {
     throw new Error(`Health check failed: HTTP ${res.status}`);
   }
