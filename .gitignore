@@ -45,3 +45,5 @@ frontend/dist/
 .idea/
 .vscode/
 *.swp
+.pytest_cache/
+.hallmark/

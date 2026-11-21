@@ -1,5 +1,4 @@
 import React from 'react';
-import { Sliders, AlertOctagon } from 'lucide-react';
 
 interface FailoverTesterProps {
   currentRule: string;
@@ -8,45 +7,50 @@ interface FailoverTesterProps {
 
 export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onSelectRule }) => {
   const options = [
-    { label: 'Normal (None)', value: '', desc: 'Direct execution on primary key' },
-    { label: 'key_1=429', value: 'key_1=429', desc: 'Simulate Rate Limit on Primary -> Fallback to key_2' },
-    { label: 'key_1=500', value: 'key_1=500', desc: 'Simulate Internal Error on Primary -> Fallback to key_2' },
-    { label: '*=429', value: '*=429', desc: 'Exhaust All Keys -> Expect Clean HTTP 503' },
+    { label: 'Normal (Direct)', value: '', desc: 'Direct execution on primary key_1' },
+    { label: 'key_1=429', value: 'key_1=429', desc: 'Simulate rate limit on primary -> fallback to key_2' },
+    { label: 'key_1=500', value: 'key_1=500', desc: 'Simulate 500 error on primary -> fallback to key_2' },
+    { label: '*=429', value: '*=429', desc: 'Exhaust all keys -> clean HTTP 503 response' },
   ];
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 mb-4 shadow-sm text-xs">
-      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800/60">
-        <span className="flex items-center gap-1.5 font-semibold text-slate-300">
-          <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-          Evaluator Test Hook (<code className="text-amber-400 font-mono">X-Simulate-Failure</code>)
-        </span>
-        {currentRule && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded border border-amber-800/60 font-mono">
-            <AlertOctagon className="w-3 h-3" />
-            Active: {currentRule}
+    <div className="bg-paper-2/60 border border-rule-subtle rounded-[12px] p-2.5 transition-colors">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-ink-muted">Failover Simulation</span>
+          <span className="text-[11px] font-mono text-ink-subtle bg-paper-3 px-1.5 py-0.5 rounded border border-rule-subtle">
+            X-Simulate-Failure
           </span>
+        </div>
+        {currentRule ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-accent bg-accent-soft px-2 py-0.5 rounded-full border border-accent/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            <span>active: {currentRule}</span>
+          </span>
+        ) : (
+          <span className="text-[11px] text-ink-subtle font-mono">live routing</span>
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
         {options.map((opt) => {
           const isActive = currentRule === opt.value;
           return (
             <button
               key={opt.label}
+              type="button"
               onClick={() => onSelectRule(opt.value)}
-              className={`px-2.5 py-1.5 rounded-lg border text-left transition-all ${
+              className={`px-3 py-2 rounded-[8px] border text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] ${
                 isActive
-                  ? 'bg-indigo-600/20 border-indigo-500 text-indigo-200 shadow-sm'
-                  : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-400'
+                  ? 'bg-paper-3 border-rule-2 text-ink shadow-sm'
+                  : 'bg-paper-3/40 border-rule-subtle hover:border-rule text-ink-muted hover:text-ink hover:bg-paper-3/70'
               }`}
               title={opt.desc}
             >
-              <div className="font-mono font-medium text-[11px] text-slate-200">
+              <div className="font-mono text-xs font-medium leading-none mb-1">
                 {opt.label}
               </div>
-              <div className="text-[10px] text-slate-500 truncate mt-0.5">
+              <div className="text-[11px] text-ink-subtle truncate">
                 {opt.desc}
               </div>
             </button>

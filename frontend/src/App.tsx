@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, RefreshCw, Sparkles, Terminal, Settings2, AlertCircle } from 'lucide-react';
 import { ChatMessage, HealthStatus } from './types';
 import { fetchHealth, sendChatMessage } from './api';
 import { MessageItem } from './components/MessageItem';
 import { FailoverTester } from './components/FailoverTester';
 
 export function App() {
-  // Generate a new session_id on page load
+  // Generate a dynamic session_id on page load
   const [sessionId, setSessionId] = useState<string>(() => {
     return `s-${Math.random().toString(36).substring(2, 9)}`;
   });
@@ -19,6 +18,7 @@ export function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [copiedSession, setCopiedSession] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -47,6 +47,12 @@ export function App() {
     setMessages([]);
     setErrorBanner(null);
     inputRef.current?.focus();
+  };
+
+  const handleCopySession = () => {
+    navigator.clipboard.writeText(sessionId);
+    setCopiedSession(true);
+    setTimeout(() => setCopiedSession(false), 1500);
   };
 
   // Submit message
@@ -113,26 +119,39 @@ export function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-5xl mx-auto px-4 py-3 sm:py-6 text-slate-100">
-      {/* Top Header */}
-      <header className="flex items-center justify-between pb-4 border-b border-slate-800/80 shrink-0">
+    <div className="flex flex-col h-screen max-w-4xl mx-auto px-4 py-3 sm:py-6 text-ink">
+      {/* Top Header - Apple Frosted Mast */}
+      <header className="flex items-center justify-between pb-4 border-b border-rule-subtle shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-indigo-400/30">
-            <Sparkles className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 rounded-[8px] bg-paper-2 border border-rule flex items-center justify-center shadow-sm">
+            <span className="font-mono text-accent font-semibold text-sm">λ</span>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-bold text-lg text-white tracking-tight">Lyftr AI</h1>
-              <span className="text-[10px] font-mono uppercase bg-indigo-950/80 text-indigo-400 px-2 py-0.5 rounded-full border border-indigo-800/60 font-semibold">
-                Resilient Chatbot
+              <h1 className="font-display font-medium text-base text-ink tracking-tight">
+                Lyftr AI
+              </h1>
+              <span className="text-[11px] font-mono text-ink-muted bg-paper-2 px-2 py-0.5 rounded-[6px] border border-rule-subtle">
+                gateway
               </span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-0.5">
-              <span>Session: <strong className="text-slate-300">{sessionId}</strong></span>
-              <span>•</span>
-              <span className="flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${health?.status === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                {health?.status === 'ok' ? `${health.keys_configured} Keys Active` : 'Connecting...'}
+            <div className="flex items-center gap-2 text-xs text-ink-muted font-mono mt-0.5">
+              <button
+                type="button"
+                onClick={handleCopySession}
+                className="hover:text-ink transition-colors flex items-center gap-1"
+                title="Click to copy session ID"
+              >
+                <span>session:</span>
+                <span className="text-ink underline decoration-rule hover:decoration-ink">
+                  {sessionId}
+                </span>
+                {copiedSession && <span className="text-[10px] text-ok">copied</span>}
+              </button>
+              <span className="text-ink-subtle">·</span>
+              <span className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${health?.status === 'ok' ? 'bg-ok animate-apple-pulse' : 'bg-accent'}`} />
+                <span>{health?.status === 'ok' ? `${health.keys_configured} keys active` : 'connecting...'}</span>
               </span>
             </div>
           </div>
@@ -140,35 +159,34 @@ export function App() {
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-            className={`p-2 rounded-lg border transition-all text-xs font-medium flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-[8px] border text-xs font-medium transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] ${
               showSystemPrompt
-                ? 'bg-slate-800 border-indigo-500 text-indigo-300'
-                : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 text-slate-400'
+                ? 'bg-paper-2 border-rule-2 text-ink shadow-sm'
+                : 'bg-paper-2/60 border-rule-subtle hover:border-rule text-ink-muted hover:text-ink'
             }`}
             title="Configure System Prompt"
           >
-            <Settings2 className="w-4 h-4" />
-            <span className="hidden sm:inline">System Prompt</span>
+            <span>system prompt</span>
           </button>
 
           <button
+            type="button"
             onClick={handleNewSession}
-            className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition-all text-xs font-medium flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium flex items-center gap-1.5"
             title="Start New Session"
           >
-            <RefreshCw className="w-4 h-4 text-indigo-400" />
-            <span className="hidden sm:inline">New Session</span>
+            <span>new session</span>
           </button>
         </div>
       </header>
 
       {/* Optional System Prompt Collapsible Panel */}
       {showSystemPrompt && (
-        <div className="mt-3 p-3 bg-slate-900/90 border border-slate-800 rounded-xl animate-fadeIn text-xs">
-          <label className="block text-slate-400 font-medium mb-1.5 flex items-center gap-1">
-            <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-            System Prompt Override (applied to this session):
+        <div className="mt-3 p-3 bg-paper-2/80 border border-rule-subtle rounded-[12px] animate-apple-entrance text-xs">
+          <label className="block text-ink-muted font-medium mb-1.5">
+            System prompt override:
           </label>
           <input
             data-testid="system-prompt-input"
@@ -176,7 +194,7 @@ export function App() {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder="e.g. You are a concise geography professor."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono text-xs"
+            className="w-full bg-paper-3 border border-rule rounded-[8px] px-3 py-2 text-ink placeholder-ink-subtle focus:outline-none focus:border-rule-2 font-mono text-xs transition-colors"
           />
         </div>
       )}
@@ -188,36 +206,46 @@ export function App() {
 
       {/* Global Error Banner if any */}
       {errorBanner && (
-        <div className="mb-3 px-3 py-2 bg-rose-950/70 border border-rose-800/80 rounded-xl text-xs text-rose-300 flex items-center justify-between">
+        <div className="mt-3 px-3.5 py-2.5 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-ink flex items-center justify-between animate-apple-entrance">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-bad shrink-0" />
             <span>{errorBanner}</span>
           </div>
-          <button onClick={() => setErrorBanner(null)} className="text-rose-400 hover:text-white">✕</button>
+          <button
+            type="button"
+            onClick={() => setErrorBanner(null)}
+            className="text-ink-muted hover:text-ink px-1"
+          >
+            ✕
+          </button>
         </div>
       )}
 
       {/* Chat Messages Feed */}
       <main className="flex-1 overflow-y-auto py-4 px-1 space-y-2">
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-center mb-3">
-              <Sparkles className="w-7 h-7 text-indigo-500/70" />
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-apple-entrance">
+            <div className="w-12 h-12 rounded-[14px] bg-paper-2 border border-rule-subtle flex items-center justify-center mb-4 shadow-sm">
+              <span className="font-mono text-accent text-lg">λ</span>
             </div>
-            <h2 className="text-base font-semibold text-slate-300 mb-1">How can I help you today?</h2>
-            <p className="text-xs max-w-md text-slate-500 mb-4">
-              Ask anything to test multi-turn state, LiteLLM automatic key failover, response caching, and token metrics.
+            <h2 className="text-xl font-display font-medium text-ink tracking-tight mb-1.5">
+              Resilient intelligence.
+            </h2>
+            <p className="text-xs max-w-md text-ink-muted leading-relaxed mb-6">
+              Fault-tolerant multi-provider gateway with autonomous key rotation, local caching, and SQLite session persistence.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full text-xs">
               <button
+                type="button"
                 onClick={() => setInputText("What is the capital of France?")}
-                className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80 hover:border-indigo-500/50 text-left text-slate-400 hover:text-slate-200 transition-all"
+                className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
               >
                 What is the capital of France?
               </button>
               <button
+                type="button"
                 onClick={() => setInputText("Explain REST APIs in two sentences.")}
-                className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80 hover:border-indigo-500/50 text-left text-slate-400 hover:text-slate-200 transition-all"
+                className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
               >
                 Explain REST APIs in two sentences.
               </button>
@@ -230,18 +258,18 @@ export function App() {
         )}
 
         {isLoading && (
-          <div className="flex justify-start mb-4">
-            <div className="flex gap-3 max-w-[80%] items-center bg-slate-900/80 border border-slate-800 px-4 py-3 rounded-2xl rounded-tl-sm text-xs text-slate-400">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-              <span>Generating response with LiteLLM gateway...</span>
+          <div className="flex justify-start mb-4 animate-apple-entrance">
+            <div className="flex gap-2.5 max-w-[85%] items-center bg-paper-2/90 border border-rule px-4 py-3 rounded-[14px] rounded-bl-[4px] text-xs text-ink-muted">
+              <span className="w-2 h-2 rounded-full bg-accent animate-apple-blink" />
+              <span>Resolving response via LiteLLM gateway...</span>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Message Input Footer */}
-      <footer className="pt-3 border-t border-slate-800/80 shrink-0">
+      {/* Message Input Footer - Apple Dock */}
+      <footer className="pt-3 border-t border-rule-subtle shrink-0">
         <form onSubmit={handleSendMessage} className="relative flex items-center">
           <textarea
             ref={inputRef}
@@ -249,25 +277,38 @@ export function App() {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message... (Enter to send, Shift+Enter for newline)"
+            placeholder="Send a prompt to the gateway... (Enter to send, Shift+Enter for newline)"
             rows={2}
-            className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-4 pr-14 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none transition-all shadow-inner"
+            className="w-full bg-paper-2 border border-rule hover:border-rule-2 rounded-[16px] pl-4 pr-14 py-3 text-sm text-ink placeholder-ink-subtle focus:outline-none focus:border-rule-2 focus:ring-0 resize-none transition-[border-color,background-color] duration-150"
           />
 
           <button
             type="submit"
             data-testid="send-button"
             disabled={!inputText.trim() || isLoading}
-            className="absolute right-2.5 bottom-3.5 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white transition-all shadow-md shadow-indigo-600/30 disabled:shadow-none"
+            className="absolute right-3 bottom-3.5 w-8 h-8 rounded-full bg-accent disabled:bg-paper-3 text-accent-ink disabled:text-ink-subtle border border-accent disabled:border-rule-subtle flex items-center justify-center transition-[transform,background-color,opacity] duration-150 active:scale-90 disabled:opacity-40 shadow-sm"
             title="Send Message"
+            aria-label="Send message"
           >
-            <Send className="w-4 h-4" />
+            <svg
+              aria-hidden="true"
+              className="w-4 h-4 translate-y-[-0.5px]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
           </button>
         </form>
 
-        <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500 px-1 font-mono">
-          <span>Targeting 10/10 Rubric • SQLite `/data/app.db`</span>
-          <span>LiteLLM Key Pool Failover + Built-in Caching</span>
+        <div className="flex items-center justify-between mt-2.5 text-[11px] text-ink-subtle px-1 font-mono">
+          <span>SQLite persistence ./data/app.db</span>
+          <span>LiteLLM gateway key rotation & cache</span>
         </div>
       </footer>
     </div>

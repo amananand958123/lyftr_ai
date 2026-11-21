@@ -105,10 +105,11 @@ def run_adversarial_suite():
     # TEST 7: Multi-key Failure (key_1=429,key_2=500)
     try:
         s_multi_fail = f"audit-fail-multi-{run_id}"
+        # In a 3-key pool, simulate failure across all configured keys to test 503
         r7 = client.post(
             "/chat",
-            headers={"X-Simulate-Failure": "key_1=429,key_2=500"},
-            json={"session_id": s_multi_fail, "message": "Both fail"}
+            headers={"X-Simulate-Failure": "key_1=429,key_2=500,key_3=500"},
+            json={"session_id": s_multi_fail, "message": "All keys fail"}
         )
         assert r7.status_code == 503
         assert r7.json() == {"detail": "all providers unavailable"}
