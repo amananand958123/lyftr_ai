@@ -25,24 +25,18 @@ def setup_test_env():
     settings.LLM_API_KEYS = "key_1:gemini/gemini-2.0-flash:placeholder_1,key_2:gemini/gemini-2.0-flash:placeholder_2"
 
 @pytest.fixture
-def db_session():
+def client():
     Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
 
-@pytest.fixture
-def client(db_session):
     def override_get_db():
+        db = TestingSessionLocal()
         try:
-            yield db_session
+            yield db
         finally:
-            pass
+            db.close()
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+    Base.metadata.drop_all(bind=engine)

@@ -29,9 +29,30 @@ def test_session_history_lifecycle(client):
     # Check chronological ordering
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == "My name is Alice."
+    assert "metadata" not in messages[0] or messages[0]["metadata"] is None
+
     assert messages[1]["role"] == "assistant"
     assert messages[1]["metadata"]["resolution_source"] in ["LIVE_INFERENCE", "LLM_CACHE"]
 
     assert messages[2]["role"] == "user"
     assert messages[2]["content"] == "What is my name?"
     assert messages[3]["role"] == "assistant"
+
+def test_session_isolation(client):
+    # Ensure messages from session A never leak into session B
+    sess_a = "sess-iso-A"
+    sess_b = "sess-iso-B"
+
+    client.post("/chat", json={"session_id": sess_a, "message": "Secret code is 12345"})
+    client.post("/chat", json={"session_id": sess_b, "message": "Hello from session B"})
+
+    hist_a = client.get(f"/sessions/{sess_a}/messages").json()
+    hist_b = client.get(f"/sessions/{sess_b}/messages").json()
+
+    contents_a = [m["content"] for m in hist_a["messages"]]
+    contents_b = [m["content"] for m in hist_b["messages"]]
+
+    assert "Secret code is 12345" in contents_a
+    assert "Secret code is 12345" not in contents_b
+    assert "Hello from session B" in contents_b
+    assert "Hello from session B" not in contents_a
