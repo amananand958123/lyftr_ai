@@ -47,3 +47,11 @@ frontend/dist/
 *.swp
 .pytest_cache/
 .hallmark/
+
+# Internal development scaffolding & planning artifacts
+ralph/
+prompt.md
+HANDOFF.md
+DEMO_SCRIPT.md
+SUBMISSION_CHECKLIST.md
+Lyftr_AI_Full_Stack_Assignment.pdf
