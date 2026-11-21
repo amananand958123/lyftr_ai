@@ -1,9 +1,22 @@
 const fs = require('fs');
-const files = [
-  'src/App.tsx',
-  'src/components/MessageItem.tsx',
-  'src/components/MetadataBadge.tsx'
-];
+const path = require('path');
+
+function getAllTsxFiles(dir) {
+  let results = [];
+  const list = fs.readdirSync(dir);
+  list.forEach(file => {
+    const fullPath = path.join(dir, file);
+    const stat = fs.statSync(fullPath);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(getAllTsxFiles(fullPath));
+    } else if (file.endsWith('.tsx') || file.endsWith('.ts')) {
+      results.push(fullPath);
+    }
+  });
+  return results;
+}
+
+const files = getAllTsxFiles(path.join(__dirname, 'src'));
 const requiredTestIds = [
   'chat-input',
   'send-button',
@@ -17,7 +30,7 @@ const requiredTestIds = [
 ];
 
 let allContent = '';
-files.forEach(f => { allContent += fs.readFileSync(__dirname + '/' + f, 'utf8') + '\n'; });
+files.forEach(f => { allContent += fs.readFileSync(f, 'utf8') + '\n'; });
 
 console.log('=== Verifying Frontend data-testid Attributes ===');
 let missing = 0;
