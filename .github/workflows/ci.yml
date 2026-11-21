@@ -1,0 +1,79 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-test:
+    name: Backend Tests & Adversarial Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Run pytest test suite
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          LLM_API_KEYS: key_1:gemini/gemini-2.0-flash:placeholder_key_1,key_2:gemini/gemini-2.0-flash:placeholder_key_2
+          ENABLE_FAILURE_SIMULATION: "true"
+          DEFAULT_MODEL: gemini/gemini-2.0-flash
+        run: |
+          pytest backend/tests/ -v
+
+      - name: Run 10-point adversarial acceptance audit
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          LLM_API_KEYS: key_1:gemini/gemini-2.0-flash:placeholder_key_1,key_2:gemini/gemini-2.0-flash:placeholder_key_2,key_3:gemini/gemini-2.0-flash:placeholder_key_3
+          ENABLE_FAILURE_SIMULATION: "true"
+          DEFAULT_MODEL: gemini/gemini-2.0-flash
+        run: |
+          python scripts/verify_adversarial.py
+
+  frontend-test:
+    name: Frontend Contract & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: |
+          npm ci || npm install
+
+      - name: Verify data-testid contract
+        working-directory: frontend
+        run: |
+          node test-contract.cjs
+
+      - name: Build frontend production bundle
+        working-directory: frontend
+        run: |
+          npm run build
+
+      - name: Verify compiled production bundle
+        run: |
+          python3 scripts/verify_e2e_bundle.py

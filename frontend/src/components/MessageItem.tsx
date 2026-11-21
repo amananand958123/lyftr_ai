@@ -9,19 +9,22 @@ interface MessageItemProps {
   cumulativeTokens?: number;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, cumulativeTokens }) => {
+export const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, onRegenerate, cumulativeTokens }) => {
   const isUser = message.role === 'user';
   const isError = message.isError;
   const [copiedText, setCopiedText] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
 
   const handleCopyText = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopiedText(true);
-    setTimeout(() => setCopiedText(false), 1600);
+    if (!navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 1600);
+    }).catch(() => {});
   };
 
   const handleCopyJson = () => {
+    if (!navigator.clipboard?.writeText) return;
     const jsonStr = JSON.stringify(
       {
         role: message.role,
@@ -31,9 +34,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
       null,
       2
     );
-    navigator.clipboard.writeText(jsonStr);
-    setCopiedJson(true);
-    setTimeout(() => setCopiedJson(false), 1600);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 1600);
+    }).catch(() => {});
   };
 
   if (isUser) {
@@ -53,7 +57,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
   if (message.isStreaming) {
     return (
       <div className="flex justify-start mb-5">
-        <div className="w-full max-w-[95%] sm:max-w-[88%] rounded-[16px] rounded-bl-[4px] px-5 py-4 border bg-paper-2/90 border-rule text-ink shadow-sm">
+        <div className="w-full max-w-[95%] sm:max-w-[88%] rounded-[16px] rounded-bl-[4px] px-5 py-4 border bg-paper-2/90 border-rule text-ink shadow-sm" aria-live="polite">
           <MarkdownRenderer content={message.content} />
           <span className="inline-block w-2 h-4 align-middle bg-accent animate-apple-blink" />
         </div>
@@ -61,11 +65,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
     );
   }
 
-  // Assistant message container (MUST contain data-testid="assistant-message")
+  // Assistant message container (MUST contain data-testid="assistant-message" for non-error replies)
   return (
     <div className="flex justify-start mb-5 animate-apple-entrance">
       <div
-        data-testid="assistant-message"
+        data-testid={isError ? undefined : "assistant-message"}
+        role={isError ? "alert" : undefined}
         className={`w-full max-w-[95%] sm:max-w-[88%] ${
           isError ? 'w-full' : ''
         }`}
@@ -125,7 +130,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
           </div>
 
           {/* Formatted body */}
-          <div className="text-sm leading-relaxed font-body">
+          <div className="text-sm leading-relaxed font-body" aria-live="polite">
             {isError ? (
               <div className="text-bad font-mono text-xs whitespace-pre-wrap">{message.content}</div>
             ) : (
@@ -141,4 +146,4 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
       </div>
     </div>
   );
-};
+});

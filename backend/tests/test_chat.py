@@ -37,6 +37,17 @@ def test_chat_unicode_and_emojis(client):
     data = response.json()
     assert len(data["reply"]) > 0
 
+def test_chat_validation_system_prompt_too_long(client):
+    too_long = "S" * 4001
+    response = client.post("/chat", json={
+        "session_id": "s-sys-toolong",
+        "message": "Hello",
+        "system_prompt": too_long
+    })
+    assert response.status_code == 422
+    assert "detail" in response.json()
+
+
 def test_chat_custom_system_prompt(client):
     response = client.post("/chat", json={
         "session_id": "s-sys-prompt",

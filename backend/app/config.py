@@ -8,10 +8,17 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./data/app.db"
     LLM_API_KEYS: str = "key_1:gemini/gemini-2.0-flash:placeholder_key_1,key_2:gemini/gemini-2.0-flash:placeholder_key_2"
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "https://lyftr-ai-xi.vercel.app"
+    )
     ENABLE_FAILURE_SIMULATION: bool = True
     DEFAULT_MODEL: str = "gemini/gemini-2.0-flash"
-    DEFAULT_SYSTEM_PROMPT: str = "You are a helpful and concise AI assistant."
+    DEFAULT_SYSTEM_PROMPT: str = (
+        "You are a helpful and concise AI assistant. "
+        "Format answers in Markdown, and always put code inside fenced code blocks with a language tag, like ```sql."
+    )
 
     model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 

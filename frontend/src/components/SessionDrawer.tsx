@@ -7,6 +7,7 @@ interface SessionDrawerProps {
   activeSessionId: string;
   onClose: () => void;
   onSelectSession: (sessionId: string) => void;
+  onNewSession?: () => void;
 }
 
 export const SessionDrawer: React.FC<SessionDrawerProps> = ({
@@ -14,6 +15,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
   activeSessionId,
   onClose,
   onSelectSession,
+  onNewSession,
 }) => {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [filterQuery, setFilterQuery] = useState('');
@@ -50,7 +52,11 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
     setIsLoadingMore(true);
     try {
       const data = await fetchSessions(50, sessions.length);
-      setSessions((prev) => [...prev, ...data.sessions]);
+      setSessions((prev) => {
+        const existingIds = new Set(prev.map((s) => s.session_id));
+        const newSessions = data.sessions.filter((s) => !existingIds.has(s.session_id));
+        return [...prev, ...newSessions];
+      });
       setTotalSessions(data.total);
     } catch (err) {
       console.error('Failed to load more sessions:', err);
@@ -86,12 +92,23 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (typeof window !== 'undefined' && !window.confirm('Delete this session and its history?')) {
+      return;
+    }
     try {
       await deleteSession(id);
       setSessions((prev) => prev.filter((s) => s.session_id !== id));
+      setTotalSessions((prev) => Math.max(0, prev - 1));
       const remainingTitles = { ...sessionTitles };
       delete remainingTitles[id];
       saveTitles(remainingTitles);
+      if (id === activeSessionId) {
+        if (onNewSession) {
+          onNewSession();
+        } else {
+          onSelectSession('');
+        }
+      }
     } catch (err) {
       console.error('Failed to delete session:', err);
     }
@@ -162,7 +179,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
           ) : (
             filtered.map((s) => {
               const isActive = s.session_id === activeSessionId;
-              const title = sessionTitles[s.session_id] || s.session_id;
+              const title = sessionTitles[s.session_id] || s.last_message_preview || s.session_id;
               const isEditing = editingSessionId === s.session_id;
 
               return (

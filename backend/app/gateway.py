@@ -13,19 +13,19 @@ conversation twice returns the saved answer instead of calling the provider.
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import litellm
+from fastapi import HTTPException
 
 litellm.suppress_debug_info = True  # hide LiteLLM's "Provider List" banner in logs
 
 from app.config import settings
 
 logger = logging.getLogger("lyftr.gateway")
-logging.basicConfig(level=logging.INFO)
 
 # Turn on LiteLLM's built-in in-memory cache once, when the app starts.
-litellm.enable_cache(type="local")
+litellm.enable_cache(type="local", max_messages=None)
 
 MOCK_REPLY = (
     "This is an automated response from Lyftr AI Assistant. "
@@ -33,17 +33,31 @@ MOCK_REPLY = (
 )
 
 
-def sync_cache_keys(model: str, messages: List[Dict[str, str]]):
+def sync_cache_keys(
+    model: str,
+    messages: List[Dict[str, str]],
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+):
     """
     Ensure cached replies are shared between /chat (sync) and /chat/stream (streaming).
-    LiteLLM hashes stream=True into stream cache keys, but both endpoints store the
-    exact same cached ModelResponse payload.
+    LiteLLM hashes kwargs into cache keys in insertion order, so parameters must be passed
+    in consistent order with stream=True appended at the end.
     """
     if not litellm.cache or not getattr(litellm.cache, "cache", None):
         return
     try:
-        k_sync = litellm.cache.get_cache_key(model=model, messages=messages)
-        k_stream = litellm.cache.get_cache_key(model=model, messages=messages, stream=True)
+        req_sync: Dict[str, Any] = {"model": model, "messages": messages}
+        if temperature is not None:
+            req_sync["temperature"] = temperature
+        if max_tokens is not None:
+            req_sync["max_tokens"] = max_tokens
+
+        req_stream = dict(req_sync)
+        req_stream["stream"] = True
+
+        k_sync = litellm.cache.get_cache_key(**req_sync)
+        k_stream = litellm.cache.get_cache_key(**req_stream)
         sync_val = litellm.cache.cache.get_cache(k_sync)
         stream_val = litellm.cache.cache.get_cache(k_stream)
         if sync_val and not stream_val:
@@ -52,6 +66,19 @@ def sync_cache_keys(model: str, messages: List[Dict[str, str]]):
             litellm.cache.cache.set_cache(k_sync, stream_val)
     except Exception as e:
         logger.debug(f"Failed to sync cache keys: {e}")
+
+
+def is_failover_eligible(error: Exception) -> bool:
+    """
+    True only for transient provider failures (rate limits, 5xx errors, timeouts, network drops).
+    Deterministic client errors like 400 Bad Request or ContextWindowExceeded should not fail over.
+    """
+    if isinstance(error, (litellm.exceptions.ContextWindowExceededError,)):
+        return False
+    status_code = getattr(error, "status_code", None)
+    if status_code == 400:
+        return False
+    return True
 
 
 class AllProvidersUnavailableException(Exception):
@@ -102,6 +129,7 @@ def build_request(key, messages, simulated_failures, temperature, max_tokens, sk
         # Skip the cache while simulating (so we really test the backup key)
         # and on "regenerate" (otherwise the user just gets the same saved answer back).
         "caching": not simulated_failures and not skip_cache,
+        "timeout": 30.0,
     }
     if temperature is not None:
         request["temperature"] = temperature
@@ -138,7 +166,7 @@ def complete_chat(
             continue
 
         if not skip_cache and not simulated_failures:
-            sync_cache_keys(key["model"], messages)
+            sync_cache_keys(key["model"], messages, temperature, max_tokens)
 
         request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
 
@@ -146,8 +174,11 @@ def complete_chat(
             logger.info(f"Calling {key['model']} with {key_id}")
             response = litellm.completion(**request)
             if not skip_cache and not simulated_failures:
-                sync_cache_keys(key["model"], messages)
+                sync_cache_keys(key["model"], messages, temperature, max_tokens)
         except Exception as error:
+            if not is_failover_eligible(error):
+                logger.warning(f"{key_id} received non-retryable client error: {error}. Not failing over.")
+                raise HTTPException(status_code=400, detail=f"Provider rejected request: {error}")
             logger.error(f"{key_id} failed: {error}. Trying the next key.")
             failed_attempts += 1
             continue
@@ -186,6 +217,8 @@ class OpenStream:
     first_chunk: object
     fallback_attempts: int
     start_time: float
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
 
     @property
     def from_cache(self) -> bool:
@@ -217,7 +250,7 @@ def open_stream(
             continue
 
         if not skip_cache and not simulated_failures:
-            sync_cache_keys(key["model"], messages)
+            sync_cache_keys(key["model"], messages, temperature, max_tokens)
 
         request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
         request["stream"] = True
@@ -226,11 +259,14 @@ def open_stream(
             stream = litellm.completion(**request)
             first_chunk = next(stream)
         except Exception as error:
+            if not is_failover_eligible(error):
+                logger.warning(f"{key_id} received non-retryable client error: {error}. Not failing over.")
+                raise HTTPException(status_code=400, detail=f"Provider rejected request: {error}")
             logger.error(f"{key_id} failed: {error}. Trying the next key.")
             failed_attempts += 1
             continue
 
-        return OpenStream(key_id, key["model"], stream, first_chunk, failed_attempts, start_time)
+        return OpenStream(key_id, key["model"], stream, first_chunk, failed_attempts, start_time, temperature, max_tokens)
 
     logger.error("All keys failed.")
     raise AllProvidersUnavailableException("all providers unavailable")

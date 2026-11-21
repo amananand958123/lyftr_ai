@@ -57,3 +57,51 @@ def test_cross_endpoint_cache_sharing(client):
     r2 = client.post("/chat", json={"session_id": "sess-sync-2", "message": p2})
     assert r2.status_code == 200
     assert r2.json()["metadata"]["resolution_source"] == "LLM_CACHE"
+
+
+def test_cache_clear_actually_purges_cache(client):
+    """Verify POST /cache/clear truly flushes the cache and subsequent requests trigger live inference."""
+    prompt = "Unique prompt for purge cache test: 7728192"
+
+    # Turn 1: Live inference
+    r1 = client.post("/chat", json={"session_id": "sess-purge-1", "message": prompt})
+    assert r1.status_code == 200
+    assert r1.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+
+    # Turn 2: Cache hit
+    r2 = client.post("/chat", json={"session_id": "sess-purge-2", "message": prompt})
+    assert r2.status_code == 200
+    assert r2.json()["metadata"]["resolution_source"] == "LLM_CACHE"
+
+    # Purge cache
+    clr = client.post("/cache/clear")
+    assert clr.status_code == 200
+    assert clr.json()["status"] == "ok"
+
+    # Turn 3: Must trigger LIVE_INFERENCE again since cache was flushed
+    r3 = client.post("/chat", json={"session_id": "sess-purge-3", "message": prompt})
+    assert r3.status_code == 200
+    assert r3.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+
+
+def test_cross_endpoint_cache_with_tuning_parameters(client):
+    """Verify cache sharing works when temperature and max_tokens are sent by frontend."""
+    import json
+    import uuid
+
+    uid = uuid.uuid4().hex[:8]
+    prompt = f"Cross-endpoint with params: circumference of Earth {uid}"
+    params = {"temperature": 0.7, "max_tokens": 2048}
+
+    # 1. Sync call with parameters
+    r1 = client.post("/chat", json={"session_id": f"sess-params-1-{uid}", "message": prompt, **params})
+    assert r1.status_code == 200
+    assert r1.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+
+    # 2. Stream call with identical parameters -> should HIT cache!
+    with client.stream("POST", "/chat/stream", json={"session_id": f"sess-params-2-{uid}", "message": prompt, **params}) as s_res:
+        assert s_res.status_code == 200
+        events = [line for line in s_res.iter_lines() if line.startswith("data: ")]
+        done_event = json.loads(events[-1][len("data: "):])
+        assert done_event["type"] == "done"
+        assert done_event["metadata"]["resolution_source"] == "LLM_CACHE"

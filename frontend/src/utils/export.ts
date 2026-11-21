@@ -10,7 +10,8 @@ function downloadFile(fileName: string, content: string, mimeType: string) {
   link.href = url;
   link.download = fileName;
   link.click();
-  URL.revokeObjectURL(url);
+  // Delay revoking the object URL so Safari and Firefox complete the download
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 export function exportSessionMarkdown(sessionId: string, messages: ChatMessage[]) {

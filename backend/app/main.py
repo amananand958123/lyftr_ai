@@ -1,14 +1,23 @@
-from contextlib import asynccontextmanager
+import logging
+import time
 import uuid
-from fastapi import FastAPI, Request, status
+from collections import defaultdict
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from fastapi.encoders import jsonable_encoder
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
+
 from app.config import settings
 from app.database import init_db
-from app.routes import health, chat, sessions, cache
+from app.routes import cache, chat, health, sessions
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("lyftr.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,31 +28,82 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Lyftr AI — Resilient LLM Chatbot API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-# Correlation & Request ID Middleware (US-013)
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = req_id
-        return response
+# Lightweight pure ASGI middleware for Request-ID, security headers, and request logging without buffering SSE
+class RequestContextMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
 
-app.add_middleware(RequestIDMiddleware)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-# Security Headers Middleware (US-014)
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        return response
+        headers = dict(scope.get("headers", []))
+        req_id = headers.get(b"x-request-id", b"").decode("utf-8") or str(uuid.uuid4())
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        logger.info(f"[{req_id}] {method} {path}")
 
-app.add_middleware(SecurityHeadersMiddleware)
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                resp_headers = list(message.get("headers", []))
+                resp_headers.append((b"x-request-id", req_id.encode("utf-8")))
+                resp_headers.append((b"x-content-type-options", b"nosniff"))
+                resp_headers.append((b"x-frame-options", b"DENY"))
+                resp_headers.append((b"referrer-policy", b"strict-origin-when-cross-origin"))
+                message["headers"] = resp_headers
+            await send(message)
 
-# CORS Middleware
+        await self.app(scope, receive, send_wrapper)
+
+app.add_middleware(RequestContextMiddleware)
+
+# In-memory sliding window rate limiter: 120 reqs/min per client IP (Item 10)
+class RateLimitMiddleware:
+    def __init__(self, app: ASGIApp, max_requests: int = 120, window_seconds: int = 60):
+        self.app = app
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.client_hits: dict[str, list[float]] = defaultdict(list)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        # Don't rate limit health checks, docs, or schema
+        if path in ("/health", "/health/deep", "/docs", "/openapi.json", "/favicon.ico"):
+            await self.app(scope, receive, send)
+            return
+
+        client = scope.get("client")
+        client_ip = client[0] if client else "unknown"
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        # Prune older entries
+        hits = [t for t in self.client_hits[client_ip] if t > window_start]
+        if len(hits) >= self.max_requests:
+            logger.warning(f"Rate limit exceeded for client {client_ip}")
+            response = JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Rate limit is 120 requests per minute."},
+                headers={"Retry-After": str(self.window_seconds)},
+            )
+            await response(scope, receive, send)
+            return
+
+        hits.append(now)
+        self.client_hits[client_ip] = hits
+        await self.app(scope, receive, send)
+
+app.add_middleware(RateLimitMiddleware)
+
+# CORS Middleware (Strict explicit domain control - Item 4)
 origins = settings.get_cors_origins()
 if not origins:
     origins = [
@@ -51,24 +111,16 @@ if not origins:
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "https://lyftr-ai-xi.vercel.app",
     ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Custom validation exception handler (FastAPI 422 standard shape)
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": jsonable_encoder(exc.errors())}
-    )
 
 # Include routers
 app.include_router(health.router)

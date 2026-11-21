@@ -119,11 +119,9 @@ export function useChatSession() {
         }
       } catch (err: any) {
         if (abortController.signal.aborted || err.name === 'AbortError') {
-          if (replyText) {
-            updateReply({ isStreaming: false });
-          } else {
-            setMessages((prev) => prev.filter((m) => m.id !== replyId));
-          }
+          // Streaming was stopped by the user. Drop the unfinished reply because the server
+          // never saves interrupted turns, keeping screen state identical to SQLite database.
+          setMessages((prev) => prev.filter((m) => m.id !== replyId));
           return;
         }
 
@@ -132,20 +130,17 @@ export function useChatSession() {
         }
 
         const isCutoff = err instanceof StreamCutoffError || err.name === 'StreamCutoffError' || err.isStreamCutoff;
-        if (isCutoff) {
-          const detail = err.message || 'The reply was cut off, please try again.';
-          setErrorBanner(detail);
-          setMessages((prev) => prev.filter((m) => m.id !== replyId));
-          addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: detail, isError: true });
-        } else {
-          const status = err.status || 500;
-          const detail = err.message || 'An unexpected error occurred. Please try again.';
-          setErrorBanner(`HTTP ${status}: ${detail}`);
-          // Drop a half-finished reply (it was not saved on the server either).
-          setMessages((prev) => prev.filter((m) => m.id !== replyId));
-          // Also show the error inside the chat, so the conversation never just goes blank.
-          addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: `Error (${status}): ${detail}`, isError: true });
-        }
+        const status = err.status || (isCutoff ? 502 : 500);
+        const detail = isCutoff
+          ? (err.message || 'The reply was cut off, please try again.')
+          : (err.message || 'An unexpected error occurred. Please try again.');
+        const displayText = isCutoff ? detail : `Error (${status}): ${detail}`;
+
+        setErrorBanner(isCutoff ? detail : `HTTP ${status}: ${detail}`);
+        // Drop half-finished reply (it was not saved on the server either).
+        setMessages((prev) => prev.filter((m) => m.id !== replyId));
+        // Show error inside the chat
+        addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: displayText, isError: true });
       } finally {
         if (abortControllerRef.current === abortController) {
           abortControllerRef.current = null;

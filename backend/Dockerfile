@@ -3,10 +3,6 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
@@ -15,24 +11,19 @@ FROM python:3.11-slim AS runner
 
 WORKDIR /app
 
-# Install runtime dependencies for SQLite and audio handling if needed
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Create non-root user and persistent storage directory
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /data && chown -R appuser:appuser /data /app
 
 # Copy installed Python packages from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=builder /root/.local /home/appuser/.local
+ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
 
 # Copy backend application code
-COPY app/ ./app
+COPY --chown=appuser:appuser app/ ./app
 
-# Default environment variables
-ENV DATABASE_URL=sqlite:////data/app.db
-ENV ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-ENV ENABLE_FAILURE_SIMULATION=true
-ENV DEFAULT_MODEL=gemini/gemini-2.0-flash
+USER appuser
 
 EXPOSE 8000
 

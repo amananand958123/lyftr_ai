@@ -18,10 +18,40 @@ const HEADING_STYLES: Record<number, string> = {
 
 type Block = { type: 'code'; language: string; code: string } | { type: 'markdown'; text: string };
 
+// Some models copy a pattern from web pages: a line "sql", a line "copy", then the code
+// with NO ``` around it, so it would show up as plain paragraphs. This puts the fences back.
+// The code is taken to run until the next heading, list, table or quote (or the end of the reply).
+function fenceBareCode(text: string): string {
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const isLanguageLabel = /^[a-z+#-]{1,15}$/i.test(lines[i].trim());
+    const isCopyLabel = /^copy( code)?$/i.test(lines[i + 1]?.trim() ?? '');
+    if (!isLanguageLabel || !isCopyLabel) {
+      result.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    const language = lines[i].trim();
+    i += 2; // skip the "sql" and "copy" lines
+    const code: string[] = [];
+    while (i < lines.length && !/^\s*(#{1,6} |[-*] |\d+\. |\||> )/.test(lines[i])) {
+      code.push(lines[i]);
+      i++;
+    }
+    while (code.length > 0 && code[code.length - 1].trim() === '') code.pop(); // no trailing blank lines
+    result.push('```' + language, ...code, '```');
+  }
+  return result.join('\n');
+}
+
 // Step 1: cut the text into code blocks (```...```) and normal markdown in between.
 function splitCodeBlocks(text: string): Block[] {
   const blocks: Block[] = [];
-  const codeBlockRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
+  const codeBlockRegex = /```([^\n`]*)\n([\s\S]*?)```/g;
   let lastIndex = 0;
   let match;
 
@@ -43,7 +73,7 @@ function splitCodeBlocks(text: string): Block[] {
   if (lastIndex < text.length) {
     const remaining = text.substring(lastIndex);
     // Detect an unclosed trailing code block during streaming: e.g. "```lang\n...code..."
-    const unclosedMatch = remaining.match(/^([\s\S]*?)```([a-zA-Z0-9_-]*)(?:\n([\s\S]*))?$/);
+    const unclosedMatch = remaining.match(/^([\s\S]*?)```([^\n`]*)(?:\n([\s\S]*))?$/);
     if (unclosedMatch) {
       const beforeCode = unclosedMatch[1];
       const lang = unclosedMatch[2].trim() || 'text';
@@ -233,7 +263,7 @@ function renderMarkdownSection(rawMarkdown: string, sectionKey: string): React.R
         <ul key={`${sectionKey}-ul-${i}`} className="my-1.5 space-y-1 pl-4 list-disc text-ink-2 marker:text-accent">
           {listItems.map((item, itemIdx) => (
             <li key={itemIdx} className="pl-1 leading-relaxed">
-              {formatInlineText(item)}
+              {renderTaskItem(item)}
             </li>
           ))}
         </ul>
@@ -272,8 +302,21 @@ function renderMarkdownSection(rawMarkdown: string, sectionKey: string): React.R
   return elements;
 }
 
+// "[ ] text" / "[x] text" inside a bullet list = a checklist item.
+function renderTaskItem(item: string): React.ReactNode {
+  const task = item.match(/^\[( |x|X)\] (.*)/);
+  if (!task) return formatInlineText(item);
+  return (
+    <>
+      <span className="mr-1.5 text-ink-subtle">{task[1] === ' ' ? '☐' : '☑'}</span>
+      {formatInlineText(task[2])}
+    </>
+  );
+}
+
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
-  const blocks = splitCodeBlocks(content);
+  // Windows line endings (\r\n) would break the line-based parsing, so normalize them first.
+  const blocks = splitCodeBlocks(fenceBareCode(content.replace(/\r\n/g, '\n')));
 
   return (
     <div className="space-y-1 text-sm leading-relaxed text-ink selection:bg-accent/20">

@@ -35,12 +35,13 @@ export function App() {
 
   const [inputText, setInputText] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
-  const [showSystemPrompt, setShowSystemPrompt] = useState(true);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [showTuning, setShowTuning] = useState(false);
   const [showSessionDrawer, setShowSessionDrawer] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showTelemetryHUD, setShowTelemetryHUD] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isWakingColdStart, setIsWakingColdStart] = useState(false);
 
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
@@ -50,6 +51,7 @@ export function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const isAtBottomRef = useRef(true);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleScroll = () => {
     if (mainRef.current) {
@@ -106,6 +108,18 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    if (isLoading && !health) {
+      t = setTimeout(() => setIsWakingColdStart(true), 3500);
+    } else {
+      setIsWakingColdStart(false);
+    }
+    return () => {
+      if (t) clearTimeout(t);
+    };
+  }, [isLoading, health]);
+
   // Keyboard shortcuts: Cmd/Ctrl/Option + letter runs an action, Escape closes any open panel.
   useEffect(() => {
     const shortcuts: Record<string, () => void> = {
@@ -128,17 +142,20 @@ export function App() {
       const isAlt = e.altKey;
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+      const codeKey = e.code.replace('Key', '').toLowerCase();
 
       // Chrome steals ⌘T and ⌘N for browser tabs/windows; support ⌥T / Alt+T and ⌥N / Alt+N
-      if ((isCmdOrCtrl || isAlt) && key === 'n') {
+      // Checking e.code ensures Mac Option keys (which alter e.key to special characters) work reliably
+      if ((isCmdOrCtrl || isAlt) && (key === 'n' || e.code === 'KeyN')) {
         e.preventDefault();
         handleNewSession();
-      } else if ((isCmdOrCtrl || isAlt) && key === 't') {
+      } else if ((isCmdOrCtrl || isAlt) && (key === 't' || e.code === 'KeyT')) {
         e.preventDefault();
         setShowTelemetryHUD((open) => !open);
-      } else if (isCmdOrCtrl && shortcuts[key]) {
+      } else if (isCmdOrCtrl && (shortcuts[key] || shortcuts[codeKey])) {
         e.preventDefault();
-        shortcuts[key]();
+        const action = shortcuts[key] || shortcuts[codeKey];
+        action?.();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -146,8 +163,9 @@ export function App() {
   }, [sessionId, messages, handleNewSession, toggleTheme]);
 
   const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handlePurgeCache = async () => {
@@ -251,6 +269,13 @@ export function App() {
         </div>
       )}
 
+      {isWakingColdStart && (
+        <div className="mt-2 px-3 py-2 bg-cool-soft/60 border border-cool/30 rounded-[10px] text-xs font-mono text-ink flex items-center gap-2 animate-apple-entrance">
+          <span className="w-2 h-2 rounded-full bg-cool animate-apple-pulse shrink-0" />
+          <span>Waking up cloud backend (Render spin-up takes ~30s on free tier)...</span>
+        </div>
+      )}
+
       <main
         ref={mainRef}
         onScroll={handleScroll}
@@ -320,6 +345,7 @@ export function App() {
         activeSessionId={sessionId}
         onClose={() => setShowSessionDrawer(false)}
         onSelectSession={handleSelectSession}
+        onNewSession={handleNewSession}
       />
 
       <TelemetryHUD

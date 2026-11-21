@@ -34,9 +34,13 @@ export const Header: React.FC<HeaderProps> = ({
   const [copiedSession, setCopiedSession] = useState(false);
 
   const handleCopySession = () => {
-    navigator.clipboard.writeText(sessionId);
-    setCopiedSession(true);
-    setTimeout(() => setCopiedSession(false), 1500);
+    if (!navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(sessionId).then(() => {
+      setCopiedSession(true);
+      setTimeout(() => setCopiedSession(false), 1500);
+    }).catch((err) => {
+      console.warn('Failed to copy session id to clipboard:', err);
+    });
   };
 
   return (
@@ -90,7 +94,8 @@ export const Header: React.FC<HeaderProps> = ({
           tuning
         </HeaderButton>
         <HeaderButton onClick={() => setShowSystemPrompt((open) => !open)} active={showSystemPrompt} title="Configure System Prompt">
-          system prompt
+          <span className="hidden sm:inline">system prompt</span>
+          <span className="sm:hidden">prompt</span>
         </HeaderButton>
         <HeaderButton onClick={onNewSession} title="Start New Session (⌥N or ⌘N)">
           new

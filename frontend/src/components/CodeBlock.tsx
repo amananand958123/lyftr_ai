@@ -23,7 +23,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
     if (!line) return <span>&nbsp;</span>;
 
     // Detect single line comments
-    if (line.trim().startsWith('#') || line.trim().startsWith('//')) {
+    if (/^(#|\/\/|--)/.test(line.trim())) { // Python/shell, JS/C, SQL comments
       return <span className="text-ink-subtle italic">{line}</span>;
     }
 

@@ -1,6 +1,6 @@
 DOCKER_COMPOSE ?= $(shell which docker-compose 2>/dev/null || echo "docker compose")
 
-.PHONY: up down logs test clean audit migrate benchmark verify-bundle
+.PHONY: up down logs test clean audit benchmark verify-bundle
 
 up:
 	$(DOCKER_COMPOSE) up --build -d
@@ -17,9 +17,6 @@ test:
 
 audit:
 	./backend/venv/bin/python scripts/verify_adversarial.py
-
-migrate:
-	cd backend && venv/bin/alembic upgrade head
 
 benchmark:
 	./backend/venv/bin/python scripts/benchmark.py --concurrency 3 --requests 6

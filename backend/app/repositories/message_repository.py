@@ -1,6 +1,6 @@
 """All database reads and writes for chat messages live here."""
 import json
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -59,39 +59,48 @@ def save_turn(
     db.commit()
 
 
-def list_sessions(db: Session, limit: int, offset: int):
-    """Returns (total number of sessions, one summary dict per session on this page)."""
-    rows = (
+def list_sessions(db: Session, limit: int, offset: int, client_id: Optional[str] = None):
+    """Returns (total number of sessions, one summary dict per session on this page).
+    Executes in O(1) queries instead of N+1."""
+    query = (
         db.query(
             Message.session_id,
             func.count(Message.id).label("message_count"),
             func.max(Message.created_at).label("last_active_at"),
+            func.max(Message.id).label("max_id"),
         )
+    )
+    if client_id:
+        query = query.filter(Message.session_id.like(f"s-{client_id}-%"))
+
+    rows = (
+        query
         .group_by(Message.session_id)
-        .order_by(func.max(Message.id).desc())  # most recently used first
+        .order_by(func.max(Message.id).desc())
         .offset(offset)
         .limit(limit)
         .all()
     )
-    total = db.query(func.count(func.distinct(Message.session_id))).scalar() or 0
+
+    total_query = db.query(func.count(func.distinct(Message.session_id)))
+    if client_id:
+        total_query = total_query.filter(Message.session_id.like(f"s-{client_id}-%"))
+    total = total_query.scalar() or 0
+
+    # Fetch all last message previews in a single query (eliminating N+1 query loop)
+    max_ids = [row.max_id for row in rows if row.max_id is not None]
+    previews = {}
+    if max_ids:
+        last_messages = db.query(Message.session_id, Message.content).filter(Message.id.in_(max_ids)).all()
+        for sid, content in last_messages:
+            previews[sid] = content[:80] + "..." if len(content) > 80 else content
 
     summaries = []
     for row in rows:
-        # ponytail: one extra query per session (N+1); fine for a page of 50, use a window function if it grows.
-        last_message = (
-            db.query(Message.content)
-            .filter(Message.session_id == row.session_id)
-            .order_by(Message.id.desc())
-            .first()
-        )
-        preview = last_message.content if last_message else None
-        if preview and len(preview) > 80:
-            preview = preview[:80] + "..."
-
         summaries.append({
             "session_id": row.session_id,
             "message_count": row.message_count,
-            "last_message_preview": preview,
+            "last_message_preview": previews.get(row.session_id),
             "last_active_at": row.last_active_at,
         })
     return total, summaries

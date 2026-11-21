@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.gateway import is_placeholder_key
 from app.schemas import DeepHealthResponse, DeepProviderHealth, HealthResponse
 
 router = APIRouter(tags=["Health"])
@@ -41,19 +42,22 @@ def get_deep_health(db: Session = Depends(get_db)):
 
     providers = []
     for key in settings.get_key_pool():
-        configured = bool(key["api_key"]) and not key["api_key"].startswith("YOUR_")
+        is_mock = is_placeholder_key(key.get("api_key", ""))
+        is_configured = bool(key.get("api_key")) and not is_mock
+        status_label = "healthy" if is_configured else ("mock" if is_mock else "unconfigured")
         providers.append(DeepProviderHealth(
             key_id=key["key_id"],
             model=key["model"],
-            status="healthy" if configured else "unconfigured",
+            status=status_label,
         ))
 
-    healthy_count = sum(1 for p in providers if p.status == "healthy")
+    healthy_count = sum(1 for p in providers if p.status in ("healthy", "mock"))
+    real_healthy_count = sum(1 for p in providers if p.status == "healthy")
     if healthy_count == 0:
         raise HTTPException(status_code=503, detail="no healthy providers available")
 
     return DeepHealthResponse(
-        status="ok",
+        status="ok" if real_healthy_count > 0 else "degraded",
         total_keys=len(providers),
         healthy_keys=healthy_count,
         providers=providers,

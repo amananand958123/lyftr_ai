@@ -24,10 +24,14 @@ def clear_cache():
     """
     if litellm.cache is not None:
         try:
-            if hasattr(litellm.cache, "flush_all"):
-                litellm.cache.flush_all()
-            elif hasattr(litellm.cache, "cache") and hasattr(litellm.cache.cache, "clear"):
-                litellm.cache.cache.clear()
+            cache_obj = getattr(litellm.cache, "cache", None)
+            if cache_obj is not None:
+                if hasattr(cache_obj, "flush_cache"):
+                    cache_obj.flush_cache()
+                if hasattr(cache_obj, "cache_dict") and isinstance(cache_obj.cache_dict, dict):
+                    cache_obj.cache_dict.clear()
+            elif hasattr(litellm.cache, "flush_cache"):
+                litellm.cache.flush_cache()
         except Exception:
             pass
     return {"status": "ok", "message": "Cache cleared successfully"}

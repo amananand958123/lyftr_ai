@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,10 +20,11 @@ router = APIRouter(tags=["Sessions"])
 def list_sessions(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    x_client_id: Optional[str] = Header(None, alias="X-Client-ID"),
     db: Session = Depends(get_db),
 ):
-    """Paginated list of sessions, most recently active first."""
-    total, summaries = message_repository.list_sessions(db, limit=limit, offset=offset)
+    """Paginated list of sessions, most recently active first. Scoped to client when header provided."""
+    total, summaries = message_repository.list_sessions(db, limit=limit, offset=offset, client_id=x_client_id)
     return SessionListResponse(total=total, sessions=[SessionSummary(**s) for s in summaries])
 
 

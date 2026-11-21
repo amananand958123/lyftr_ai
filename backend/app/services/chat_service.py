@@ -14,6 +14,9 @@ from app.repositories import message_repository
 from app.schemas import ChatMetadata, ChatResponse
 
 
+MAX_HISTORY_MESSAGES = 20  # Sliding window keeps cost bounded and avoids token limit exhaustion
+
+
 def build_conversation(
     db: Session,
     session_id: str,
@@ -28,6 +31,10 @@ def build_conversation(
     history = message_repository.get_history(db, session_id)
     if regenerate and message_repository.is_redo_of_last_turn(history, message):
         history = history[:-2]  # the question is added again below, so drop the old copy
+
+    # Bound conversation context to the latest MAX_HISTORY_MESSAGES
+    if len(history) > MAX_HISTORY_MESSAGES:
+        history = history[-MAX_HISTORY_MESSAGES:]
 
     for past in history:
         conversation.append({"role": past.role, "content": past.content})
@@ -137,7 +144,7 @@ def stream_chat(
         # Glue the chunks back into one full response (LiteLLM also estimates token counts here).
         full = litellm.stream_chunk_builder(chunks, messages=conversation)
         if not regenerate:
-            sync_cache_keys(opened.model, conversation)
+            sync_cache_keys(opened.model, conversation, opened.temperature, opened.max_tokens)
         reply = full.choices[0].message.content or ""
         from_cache = opened.from_cache
         metadata = ChatMetadata(

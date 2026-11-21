@@ -31,7 +31,7 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulati
       {/* Required meta-model */}
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] font-mono tracking-tight">
         <span className="text-ink-subtle">model</span>
-        <span data-testid="meta-model" className="text-ink">{metadata.model || 'persisted'}</span>
+        <span data-testid="meta-model" className="text-ink">{metadata.model || '—'}</span>
       </span>
 
       {/* Required meta-latency */}
@@ -40,7 +40,7 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulati
         <span data-testid="meta-latency" className="text-ink font-medium">
           {metadata.latency_ms !== undefined && metadata.latency_ms !== null
             ? `${metadata.latency_ms} ms`
-            : 'persisted'}
+            : '—'}
         </span>
       </span>
 
