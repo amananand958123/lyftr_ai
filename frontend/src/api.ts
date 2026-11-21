@@ -16,11 +16,21 @@ export function getClientId(): string {
   return id;
 }
 
-// Configurable API URL: VITE_API_URL if set; otherwise localhost in dev and empty string in production (handled by proxy/rewrites)
-const isLocal = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || (isLocal ? 'http://localhost:8000' : '')
-).replace(/\/+$/, '');
+function getApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (['localhost', '127.0.0.1', '0.0.0.0'].includes(host) || host.startsWith('192.168.') || host.startsWith('10.')) {
+      if (window.location.port === '8000') return '';
+      return `http://${host === '0.0.0.0' ? 'localhost' : host}:8000`;
+    }
+  }
+  return '';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // An Error that also remembers the HTTP status (the chat shows "Error (503): ...").
 function httpError(status: number, detail: string) {
@@ -56,8 +66,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchHealth() {
-  // Timestamp in the URL + no-store so the browser never shows a cached health result.
-  return request<HealthStatus>(`/health?_t=${Date.now()}`, { cache: 'no-store' });
+  // Timestamp in the URL guarantees cache-busting without triggering browser cache-mode restrictions
+  return request<HealthStatus>(`/health?_t=${Date.now()}`);
 }
 
 export function fetchSessions(limit = 50, offset = 0) {
