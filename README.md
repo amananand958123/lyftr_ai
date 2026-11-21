@@ -71,6 +71,7 @@ make test
 ### B. Response Caching
 - **LiteLLM Native Caching:** Built strictly on LiteLLM's native local in-memory cache (`litellm.enable_cache(type="local")`).
 - **Cache Invariant:** Cache keys are derived from the model name and the full message history array `[system, history, current_message]`.
+- **Cross-Endpoint Cache Synchronization:** Automatically synchronizes cache entries between `/chat` (sync) and `/chat/stream` (SSE), so asking a question via either endpoint allows the other endpoint to hit the cache immediately.
 - **Cache Hit Contract:** Identical prompts in fresh sessions resolve as `resolution_source: "LLM_CACHE"` with sub-millisecond latency, zero `fallback_attempts`, `key_id: null`, and identical token metrics.
 
 ### C. SQLite Session Storage & Concurrency
@@ -78,6 +79,16 @@ make test
 - **Persistent Docker Volume:** The database file is located at `DATABASE_URL=sqlite:////data/app.db` under a named Docker volume (`sqlite_data:/data`) so conversation history survives container restarts.
 - **WAL Mode Optimization:** Enabled `PRAGMA journal_mode=WAL` and `PRAGMA synchronous=NORMAL` to maximize concurrent read/write throughput without table locks.
 - **Error Hygiene:** Unsuccessful requests (422 validation errors or 503 provider exhaustion) are never written to the database.
+
+### D. Real-Time Streaming (`POST /chat/stream`)
+- **Server-Sent Events (SSE):** Provides real-time token delivery via standard `text/event-stream` chunks (`data: {"type": "delta", "text": "..."}`).
+- **Failover Preflight:** Evaluates the primary key and tests the first chunk before committing to a stream. If a provider fails at initialization, the gateway automatically rolls over to the fallback key before any tokens reach the client.
+- **Completion Metadata:** Delivers a finalized `data: {"type": "done", "metadata": {...}}` event with token usage, resolution source, model, and latency.
+
+### E. In-Place Reply Regeneration
+- **Duplicate-Free Redo:** Supports `"regenerate": true` in the JSON request body (or `X-Regenerate: true` header).
+- **History & Context Hygiene:** When regenerating, the last turn is dropped from the prompt context so questions are never duplicated, and the assistant's reply is updated in-place in SQLite.
+- **Cache Bypass:** Regenerate requests bypass the cache (`skip_cache=True`) to ensure a fresh live inference from the model.
 
 ---
 
@@ -120,6 +131,23 @@ curl -s -X POST http://localhost:8000/chat \
 
 ### 4. Per-Request Token Usage
 Every response returns `input_tokens` and `output_tokens` extracted from LiteLLM usage metrics for that single completion, never an aggregated conversation total.
+
+### 5. SSE Streaming Demonstration
+Stream tokens in real time via Server-Sent Events:
+```bash
+curl -N -X POST http://localhost:8000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "sess-stream", "message": "Explain quantum computing in one sentence."}'
+```
+**Expected Stream:** Multiple `data: {"type": "delta", "text": "..."}` events followed by a final `data: {"type": "done", "metadata": {...}}` payload.
+
+### 6. Reply Regeneration Demonstration
+Regenerate a turn without duplicating questions in SQLite history:
+```bash
+curl -s -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "sess-stream", "message": "Explain quantum computing in one sentence.", "regenerate": true}' | jq .
+```
 
 ---
 

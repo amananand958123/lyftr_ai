@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ChatMessage, ChatMetadata } from '../types';
-import { streamChatMessage, fetchSessionMessages } from '../api';
+import { streamChatMessage, fetchSessionMessages, StreamCutoffError } from '../api';
 
 export interface SendOptions {
   systemPrompt?: string;
@@ -22,45 +22,72 @@ export function useChatSession() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const activeSessionIdRef = useRef<string>(sessionId);
+  activeSessionIdRef.current = sessionId;
+
   const addMessage = (msg: ChatMessage) => setMessages((prev) => [...prev, msg]);
 
+  const stopStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  }, []);
+
   const handleNewSession = useCallback(() => {
-    setSessionId(newSessionId());
+    stopStreaming();
+    const newId = newSessionId();
+    activeSessionIdRef.current = newId;
+    setSessionId(newId);
     setMessages([]);
     setErrorBanner(null);
-  }, []);
+  }, [stopStreaming]);
 
   // Open a past session and load its messages from the backend.
   const handleSelectSession = useCallback(async (selectedId: string) => {
+    stopStreaming();
+    activeSessionIdRef.current = selectedId;
     setSessionId(selectedId);
     setErrorBanner(null);
     try {
       const data = await fetchSessionMessages(selectedId);
-      setMessages(
-        data.messages.map((m, index) => ({
-          id: `loaded-${index}`,
-          role: m.role,
-          content: m.content,
-          // History only stores part of the metadata; that's all the badge needs from old turns.
-          metadata: m.metadata as ChatMetadata | undefined,
-        }))
-      );
+      if (activeSessionIdRef.current === selectedId) {
+        setMessages(
+          data.messages.map((m, index) => ({
+            id: `loaded-${index}`,
+            role: m.role,
+            content: m.content,
+            // History only stores part of the metadata; that's all the badge needs from old turns.
+            metadata: m.metadata as ChatMetadata | undefined,
+          }))
+        );
+      }
     } catch (err) {
       console.error('Failed to load past messages:', err);
-      setMessages([]);
+      if (activeSessionIdRef.current === selectedId) {
+        setMessages([]);
+      }
     }
-  }, []);
+  }, [stopStreaming]);
 
   const sendMessage = useCallback(
     async (text: string, options: SendOptions = {}, isRegenerate = false) => {
       if (!text.trim() || isLoading) return;
 
+      stopStreaming();
       setErrorBanner(null);
+      const targetSessionId = sessionId;
+
       // Show the user's message right away, before the server answers.
       if (!isRegenerate) {
         addMessage({ id: `user-${Date.now()}`, role: 'user', content: text });
       }
       setIsLoading(true);
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       // The reply bubble is added when the first piece of text arrives, then grows piece by piece.
       const replyId = `assistant-${Date.now()}`;
@@ -69,29 +96,64 @@ export function useChatSession() {
       let replyText = '';
 
       try {
-        const metadata = await streamChatMessage(sessionId, text, options, (piece) => {
-          if (!piece) return; // providers sometimes send empty chunks
-          if (replyText === '') {
-            addMessage({ id: replyId, role: 'assistant', content: piece, isStreaming: true });
-          } else {
-            updateReply({ content: replyText + piece });
+        const metadata = await streamChatMessage(
+          targetSessionId,
+          text,
+          { ...options, signal: abortController.signal },
+          (piece) => {
+            if (activeSessionIdRef.current !== targetSessionId || abortController.signal.aborted) {
+              return;
+            }
+            if (!piece) return; // providers sometimes send empty chunks
+            if (replyText === '') {
+              addMessage({ id: replyId, role: 'assistant', content: piece, isStreaming: true });
+            } else {
+              updateReply({ content: replyText + piece });
+            }
+            replyText += piece;
           }
-          replyText += piece;
-        });
-        updateReply({ metadata, isStreaming: false });
+        );
+
+        if (activeSessionIdRef.current === targetSessionId && !abortController.signal.aborted) {
+          updateReply({ metadata, isStreaming: false });
+        }
       } catch (err: any) {
-        const status = err.status || 500;
-        const detail = err.message || 'An unexpected error occurred. Please try again.';
-        setErrorBanner(`HTTP ${status}: ${detail}`);
-        // Drop a half-finished reply (it was not saved on the server either).
-        setMessages((prev) => prev.filter((m) => m.id !== replyId));
-        // Also show the error inside the chat, so the conversation never just goes blank.
-        addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: `Error (${status}): ${detail}`, isError: true });
+        if (abortController.signal.aborted || err.name === 'AbortError') {
+          if (replyText) {
+            updateReply({ isStreaming: false });
+          } else {
+            setMessages((prev) => prev.filter((m) => m.id !== replyId));
+          }
+          return;
+        }
+
+        if (activeSessionIdRef.current !== targetSessionId) {
+          return;
+        }
+
+        const isCutoff = err instanceof StreamCutoffError || err.name === 'StreamCutoffError' || err.isStreamCutoff;
+        if (isCutoff) {
+          const detail = err.message || 'The reply was cut off, please try again.';
+          setErrorBanner(detail);
+          setMessages((prev) => prev.filter((m) => m.id !== replyId));
+          addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: detail, isError: true });
+        } else {
+          const status = err.status || 500;
+          const detail = err.message || 'An unexpected error occurred. Please try again.';
+          setErrorBanner(`HTTP ${status}: ${detail}`);
+          // Drop a half-finished reply (it was not saved on the server either).
+          setMessages((prev) => prev.filter((m) => m.id !== replyId));
+          // Also show the error inside the chat, so the conversation never just goes blank.
+          addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: `Error (${status}): ${detail}`, isError: true });
+        }
       } finally {
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
         setIsLoading(false);
       }
     },
-    [sessionId, isLoading]
+    [sessionId, isLoading, stopStreaming]
   );
 
   // Remove the last reply and ask the same question again.
@@ -129,6 +191,7 @@ export function useChatSession() {
     handleSelectSession,
     sendMessage,
     regenerateLast,
+    stopStreaming,
     cumulativeTokens,
     latencyPoints,
   };

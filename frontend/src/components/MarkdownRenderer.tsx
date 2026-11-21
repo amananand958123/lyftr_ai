@@ -41,10 +41,30 @@ function splitCodeBlocks(text: string): Block[] {
   }
 
   if (lastIndex < text.length) {
-    blocks.push({
-      type: 'markdown',
-      text: text.substring(lastIndex),
-    });
+    const remaining = text.substring(lastIndex);
+    // Detect an unclosed trailing code block during streaming: e.g. "```lang\n...code..."
+    const unclosedMatch = remaining.match(/^([\s\S]*?)```([a-zA-Z0-9_-]*)(?:\n([\s\S]*))?$/);
+    if (unclosedMatch) {
+      const beforeCode = unclosedMatch[1];
+      const lang = unclosedMatch[2].trim() || 'text';
+      const code = unclosedMatch[3] !== undefined ? unclosedMatch[3] : '';
+      if (beforeCode) {
+        blocks.push({
+          type: 'markdown',
+          text: beforeCode,
+        });
+      }
+      blocks.push({
+        type: 'code',
+        language: lang,
+        code: code,
+      });
+    } else {
+      blocks.push({
+        type: 'markdown',
+        text: remaining,
+      });
+    }
   }
 
   return blocks;

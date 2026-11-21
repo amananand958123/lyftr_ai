@@ -33,6 +33,27 @@ MOCK_REPLY = (
 )
 
 
+def sync_cache_keys(model: str, messages: List[Dict[str, str]]):
+    """
+    Ensure cached replies are shared between /chat (sync) and /chat/stream (streaming).
+    LiteLLM hashes stream=True into stream cache keys, but both endpoints store the
+    exact same cached ModelResponse payload.
+    """
+    if not litellm.cache or not getattr(litellm.cache, "cache", None):
+        return
+    try:
+        k_sync = litellm.cache.get_cache_key(model=model, messages=messages)
+        k_stream = litellm.cache.get_cache_key(model=model, messages=messages, stream=True)
+        sync_val = litellm.cache.cache.get_cache(k_sync)
+        stream_val = litellm.cache.cache.get_cache(k_stream)
+        if sync_val and not stream_val:
+            litellm.cache.cache.set_cache(k_stream, sync_val)
+        elif stream_val and not sync_val:
+            litellm.cache.cache.set_cache(k_sync, stream_val)
+    except Exception as e:
+        logger.debug(f"Failed to sync cache keys: {e}")
+
+
 class AllProvidersUnavailableException(Exception):
     """Every key in the pool failed."""
 
@@ -73,13 +94,14 @@ def parse_simulate_failure_header(header: Optional[str]) -> Dict[str, int]:
     return rules
 
 
-def build_request(key, messages, simulated_failures, temperature, max_tokens) -> dict:
+def build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache=False) -> dict:
     """The arguments for litellm.completion() for one key."""
     request = {
         "model": key["model"],
         "messages": messages,
-        # Skip the cache while simulating, so we really test the backup key.
-        "caching": not simulated_failures,
+        # Skip the cache while simulating (so we really test the backup key)
+        # and on "regenerate" (otherwise the user just gets the same saved answer back).
+        "caching": not simulated_failures and not skip_cache,
     }
     if temperature is not None:
         request["temperature"] = temperature
@@ -99,6 +121,7 @@ def complete_chat(
     simulate_header: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    skip_cache: bool = False,
 ) -> GatewayResult:
     key_pool = settings.get_key_pool()
     simulated_failures = parse_simulate_failure_header(simulate_header)
@@ -114,11 +137,16 @@ def complete_chat(
             failed_attempts += 1
             continue
 
-        request = build_request(key, messages, simulated_failures, temperature, max_tokens)
+        if not skip_cache and not simulated_failures:
+            sync_cache_keys(key["model"], messages)
+
+        request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
 
         try:
             logger.info(f"Calling {key['model']} with {key_id}")
             response = litellm.completion(**request)
+            if not skip_cache and not simulated_failures:
+                sync_cache_keys(key["model"], messages)
         except Exception as error:
             logger.error(f"{key_id} failed: {error}. Trying the next key.")
             failed_attempts += 1
@@ -170,6 +198,7 @@ def open_stream(
     simulate_header: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    skip_cache: bool = False,
 ) -> OpenStream:
     """
     Same failover as complete_chat, but for streaming.
@@ -187,7 +216,10 @@ def open_stream(
             failed_attempts += 1
             continue
 
-        request = build_request(key, messages, simulated_failures, temperature, max_tokens)
+        if not skip_cache and not simulated_failures:
+            sync_cache_keys(key["model"], messages)
+
+        request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
         request["stream"] = True
         try:
             logger.info(f"Streaming {key['model']} with {key_id}")

@@ -29,16 +29,35 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitleInput, setEditTitleInput] = useState('');
+  const [totalSessions, setTotalSessions] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setIsLoading(true);
       fetchSessions(50, 0)
-        .then((data) => setSessions(data.sessions))
+        .then((data) => {
+          setSessions(data.sessions);
+          setTotalSessions(data.total);
+        })
         .catch((err) => console.error('Failed to load sessions:', err))
         .finally(() => setIsLoading(false));
     }
   }, [isOpen]);
+
+  const handleLoadMore = async () => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const data = await fetchSessions(50, sessions.length);
+      setSessions((prev) => [...prev, ...data.sessions]);
+      setTotalSessions(data.total);
+    } catch (err) {
+      console.error('Failed to load more sessions:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -211,6 +230,19 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
                 </div>
               );
             })
+          )}
+
+          {!isLoading && sessions.length < totalSessions && (
+            <div className="pt-2 pb-4 text-center">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="w-full py-2 px-3 rounded-[8px] bg-paper-3 hover:bg-paper-2 border border-rule text-xs font-mono text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
+              >
+                {isLoadingMore ? 'Loading...' : `Load more sessions (${sessions.length} of ${totalSessions})`}
+              </button>
+            </div>
           )}
         </div>
       </div>

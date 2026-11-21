@@ -103,6 +103,8 @@ def test_regenerate_no_duplicate_history(client):
         "regenerate": True
     })
     assert resp_regen.status_code == 200
+    # A regenerate must ask the model again, not replay the cached answer.
+    assert resp_regen.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
 
     hist2 = client.get(f"/sessions/{sess_id}/messages").json()
     assert len(hist2["messages"]) == 2, f"Expected 2 messages, got {len(hist2['messages'])} (duplicate history bug!)"
@@ -110,11 +112,10 @@ def test_regenerate_no_duplicate_history(client):
     assert hist2["messages"][0]["content"] == "What is 2+2?"
     assert hist2["messages"][1]["role"] == "assistant"
 
-    # Regenerate again (via X-Regenerate header)
+    # Regenerate again
     resp_regen2 = client.post(
         "/chat",
-        headers={"X-Regenerate": "true"},
-        json={"session_id": sess_id, "message": "What is 2+2?"}
+        json={"session_id": sess_id, "message": "What is 2+2?", "regenerate": True}
     )
     assert resp_regen2.status_code == 200
 

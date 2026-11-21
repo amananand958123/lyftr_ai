@@ -14,6 +14,15 @@ function httpError(status: number, detail: string) {
   return error;
 }
 
+export class StreamCutoffError extends Error {
+  isStreamCutoff: boolean;
+  constructor(message = 'The reply was cut off, please try again.') {
+    super(message);
+    this.name = 'StreamCutoffError';
+    this.isStreamCutoff = true;
+  }
+}
+
 // Builds an error from a failed response, using FastAPI's {"detail": ...} body when there is one.
 async function errorFrom(res: Response) {
   const data = await res.json().catch(() => ({}));
@@ -68,15 +77,12 @@ export function clearCache() {
 export async function streamChatMessage(
   sessionId: string,
   message: string,
-  options: SendOptions,
+  options: SendOptions & { signal?: AbortSignal },
   onText: (text: string) => void
 ): Promise<ChatMetadata> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (options.simulateRule?.trim()) {
     headers['X-Simulate-Failure'] = options.simulateRule.trim();
-  }
-  if (options.regenerate) {
-    headers['X-Regenerate'] = 'true';
   }
   const body = {
     session_id: sessionId,
@@ -87,7 +93,12 @@ export async function streamChatMessage(
     regenerate: options.regenerate || undefined,
   };
 
-  const res = await fetch(`${API_BASE_URL}/chat/stream`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const res = await fetch(`${API_BASE_URL}/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
   if (!res.ok) throw await errorFrom(res); // 422 / 503 come back as normal JSON errors
 
   const reader = res.body!.getReader();
@@ -107,8 +118,10 @@ export async function streamChatMessage(
       const data = JSON.parse(event.slice('data: '.length));
       if (data.type === 'delta') onText(data.text);
       if (data.type === 'done') return data.metadata;
-      if (data.type === 'error') throw httpError(502, data.detail);
+      if (data.type === 'error') {
+        throw new StreamCutoffError(data.detail ? `The reply was cut off: ${data.detail}` : undefined);
+      }
     }
   }
-  throw httpError(502, 'connection closed before the reply finished');
+  throw new StreamCutoffError('The reply was cut off, please try again.');
 }

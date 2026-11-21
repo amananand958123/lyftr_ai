@@ -10,7 +10,9 @@ interface MetadataBadgeProps {
 export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulativeTokens }) => {
   const isCache = metadata.resolution_source === 'LLM_CACHE';
 
-  const estimatedCost = ((metadata.input_tokens + metadata.output_tokens) * COST_PER_TOKEN).toFixed(6);
+  const inTok = metadata.input_tokens || 0;
+  const outTok = metadata.output_tokens || 0;
+  const estimatedCost = ((inTok + outTok) * COST_PER_TOKEN).toFixed(6);
 
   return (
     <div className="mt-3 pt-2.5 border-t border-rule-subtle flex flex-wrap items-center gap-2 text-xs font-mono">
@@ -29,20 +31,24 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulati
       {/* Required meta-model */}
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] font-mono tracking-tight">
         <span className="text-ink-subtle">model</span>
-        <span data-testid="meta-model" className="text-ink">{metadata.model}</span>
+        <span data-testid="meta-model" className="text-ink">{metadata.model || 'persisted'}</span>
       </span>
 
       {/* Required meta-latency */}
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] tabular-nums">
         <span className="text-ink-subtle">latency</span>
-        <span data-testid="meta-latency" className="text-ink font-medium">{metadata.latency_ms} ms</span>
+        <span data-testid="meta-latency" className="text-ink font-medium">
+          {metadata.latency_ms !== undefined && metadata.latency_ms !== null
+            ? `${metadata.latency_ms} ms`
+            : 'persisted'}
+        </span>
       </span>
 
       {/* Required meta-input-tokens */}
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] tabular-nums">
         <span className="text-ink-subtle">in</span>
         <span data-testid="meta-input-tokens" className="text-ink font-medium">
-          {metadata.input_tokens}
+          {inTok}
         </span>
       </span>
 
@@ -50,7 +56,7 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulati
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-paper-3 border border-rule text-ink-2 text-[11px] tabular-nums">
         <span className="text-ink-subtle">out</span>
         <span data-testid="meta-output-tokens" className="text-ink font-medium">
-          {metadata.output_tokens}
+          {outTok}
         </span>
       </span>
 

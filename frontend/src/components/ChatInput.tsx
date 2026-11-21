@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { LatencySparkline } from './LatencySparkline';
 import { exportSessionMarkdown, exportSessionJSON } from '../utils/export';
 import { ChatMessage } from '../types';
@@ -9,6 +9,7 @@ interface ChatInputProps {
   setInputText: (v: string) => void;
   onSubmit: (e?: React.FormEvent) => void;
   isLoading: boolean;
+  onStop?: () => void;
   sessionId: string;
   messages: ChatMessage[];
   latencyPoints: Array<{ latency_ms: number; is_cache: boolean }>;
@@ -19,6 +20,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   setInputText,
   onSubmit,
   isLoading,
+  onStop,
   sessionId,
   messages,
   latencyPoints,
@@ -76,11 +78,25 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             </button>
           )}
 
+          {isLoading && (
+            <button
+              type="button"
+              onClick={onStop}
+              className="w-8 h-8 rounded-full bg-bad hover:bg-bad/80 text-white flex items-center justify-center transition-[transform,background-color] duration-150 active:scale-90 shadow-sm shrink-0 mr-1"
+              title="Stop generating"
+              aria-label="Stop generating"
+            >
+              <Square aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+            </button>
+          )}
+
           <button
             type="submit"
             data-testid="send-button"
             disabled={!inputText.trim() || isLoading}
-            className="w-8 h-8 rounded-full bg-accent disabled:bg-paper-3 text-accent-ink disabled:text-ink-subtle border border-accent disabled:border-rule-subtle flex items-center justify-center transition-[transform,background-color,opacity] duration-150 active:scale-90 disabled:opacity-40 shadow-sm shrink-0"
+            className={`w-8 h-8 rounded-full bg-accent disabled:bg-paper-3 text-accent-ink disabled:text-ink-subtle border border-accent disabled:border-rule-subtle flex items-center justify-center transition-[transform,background-color,opacity] duration-150 active:scale-90 disabled:opacity-40 shadow-sm shrink-0 ${
+              isLoading ? 'hidden' : ''
+            }`}
             title="Send Message (Enter)"
             aria-label="Send message"
           >

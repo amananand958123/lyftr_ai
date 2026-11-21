@@ -18,6 +18,16 @@ def get_history(db: Session, session_id: str) -> List[Message]:
     )
 
 
+def is_redo_of_last_turn(history: List[Message], user_text: str) -> bool:
+    """True when the session ends with this same question + an answer (what "regenerate" replaces)."""
+    return (
+        len(history) >= 2
+        and history[-2].role == "user"
+        and history[-2].content == user_text
+        and history[-1].role == "assistant"
+    )
+
+
 def save_turn(
     db: Session,
     session_id: str,
@@ -31,12 +41,7 @@ def save_turn(
     When regenerating, update the last assistant reply in place instead of duplicating the turn."""
     if regenerate:
         history = get_history(db, session_id)
-        if (
-            len(history) >= 2
-            and history[-1].role == "assistant"
-            and history[-2].role == "user"
-            and history[-2].content == user_text
-        ):
+        if is_redo_of_last_turn(history, user_text):
             history[-1].content = reply
             history[-1].metadata_json = json.dumps(reply_metadata)
             history[-1].created_at = created_at

@@ -14,19 +14,19 @@ const OPTIONS: Array<{ label: string; value: string; desc: string; pipeline: Ste
     label: 'Normal (Direct)',
     value: '',
     desc: 'Direct execution on primary key_1',
-    pipeline: [{ text: 'key_1: Groq' }, { text: '200 OK' }],
+    pipeline: [{ text: 'key_1 (Primary)' }, { text: '200 OK' }],
   },
   {
     label: 'key_1=429',
     value: 'key_1=429',
     desc: 'Simulate rate limit on primary -> fallback to key_2',
-    pipeline: [{ text: 'key_1 (429 RateLimit)', failed: true }, { text: 'key_2: Gemini' }, { text: '200 OK' }],
+    pipeline: [{ text: 'key_1 (429 RateLimit)', failed: true }, { text: 'key_2 (Fallback)' }, { text: '200 OK' }],
   },
   {
     label: 'key_1=500',
     value: 'key_1=500',
     desc: 'Simulate 500 error on primary -> fallback to key_2',
-    pipeline: [{ text: 'key_1 (500 Error)', failed: true }, { text: 'key_2: Gemini' }, { text: '200 OK' }],
+    pipeline: [{ text: 'key_1 (500 Error)', failed: true }, { text: 'key_2 (Fallback)' }, { text: '200 OK' }],
   },
   {
     label: '*=429',

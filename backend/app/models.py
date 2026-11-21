@@ -19,6 +19,3 @@ class Message(Base):
     def get_metadata(self) -> Optional[dict]:
         """The metadata column as a dict (None for user messages)."""
         return json.loads(self.metadata_json) if self.metadata_json else None
-
-
-Index("idx_messages_session_id", Message.session_id)

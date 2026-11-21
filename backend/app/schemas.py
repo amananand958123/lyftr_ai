@@ -24,7 +24,7 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0, le=8192)
-    regenerate: Optional[bool] = False
+    regenerate: bool = False  # True = replace the last reply instead of adding a new turn
 
     @field_validator("message")
     @classmethod
@@ -62,6 +62,10 @@ class HistoryItemMetadata(BaseModel):
     resolution_source: str
     input_tokens: int
     output_tokens: int
+    model: Optional[str] = None
+    latency_ms: Optional[int] = None
+    key_id: Optional[str] = None
+    fallback_attempts: Optional[int] = 0
 
 class HistoryMessage(BaseModel):
     role: str

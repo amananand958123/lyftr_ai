@@ -24,3 +24,36 @@ def test_caching_behavior(client):
     assert resp3.status_code == 200
     data3 = resp3.json()
     assert data3["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+
+
+def test_cross_endpoint_cache_sharing(client):
+    """Answers cached by /chat should be hit by /chat/stream, and vice-versa."""
+    import json
+
+    # 1. Ask via /chat (sync)
+    p1 = "Cross-endpoint test 1: speed of sound"
+    r1 = client.post("/chat", json={"session_id": "sess-sync-1", "message": p1})
+    assert r1.status_code == 200
+    assert r1.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+
+    # 2. Ask identical question via /chat/stream (SSE) -> should HIT cache!
+    with client.stream("POST", "/chat/stream", json={"session_id": "sess-stream-1", "message": p1}) as stream_res:
+        assert stream_res.status_code == 200
+        events = [line for line in stream_res.iter_lines() if line.startswith("data: ")]
+        done_event = json.loads(events[-1][len("data: "):])
+        assert done_event["type"] == "done"
+        assert done_event["metadata"]["resolution_source"] == "LLM_CACHE"
+
+    # 3. Ask a fresh question via /chat/stream
+    p2 = "Cross-endpoint test 2: boiling point of water"
+    with client.stream("POST", "/chat/stream", json={"session_id": "sess-stream-2", "message": p2}) as stream_res2:
+        assert stream_res2.status_code == 200
+        events2 = [line for line in stream_res2.iter_lines() if line.startswith("data: ")]
+        done_event2 = json.loads(events2[-1][len("data: "):])
+        assert done_event2["type"] == "done"
+        assert done_event2["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+
+    # 4. Ask identical question via /chat (sync) -> should HIT cache!
+    r2 = client.post("/chat", json={"session_id": "sess-sync-2", "message": p2})
+    assert r2.status_code == 200
+    assert r2.json()["metadata"]["resolution_source"] == "LLM_CACHE"

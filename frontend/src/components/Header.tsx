@@ -71,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={onOpenTelemetryHUD}
               className="flex items-center gap-1.5 hover:opacity-80 transition-opacity group cursor-pointer"
-              title="Click to view Gateway Observability & Telemetry HUD"
+              title="Click to view Gateway Observability & Telemetry HUD (⌥T or ⌘T)"
             >
               <span className={`w-2 h-2 rounded-full ${health ? 'bg-ok animate-apple-pulse' : 'bg-ink-subtle'} group-hover:scale-125 transition-transform`} />
               <span className="text-ink-muted group-hover:text-ink font-mono text-[11px] underline decoration-rule-subtle group-hover:decoration-ink">
@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
         <HeaderButton onClick={() => setShowSystemPrompt((open) => !open)} active={showSystemPrompt} title="Configure System Prompt">
           system prompt
         </HeaderButton>
-        <HeaderButton onClick={onNewSession} title="Start New Session (⌘N)">
+        <HeaderButton onClick={onNewSession} title="Start New Session (⌥N or ⌘N)">
           new
         </HeaderButton>
 

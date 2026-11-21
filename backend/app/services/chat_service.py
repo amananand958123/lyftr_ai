@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.gateway import complete_chat, open_stream
+from app.gateway import complete_chat, open_stream, sync_cache_keys
 from app.repositories import message_repository
 from app.schemas import ChatMetadata, ChatResponse
 
@@ -22,17 +22,12 @@ def build_conversation(
     regenerate: bool = False,
 ) -> List[Dict[str, str]]:
     """System prompt + past messages + the new message.
-    When regenerating, drop the last turn so the prompt is not duplicated in LLM context."""
+    (The cache key is this whole list, so the same conversation gives a cache hit.)
+    When regenerating, drop the last turn so the question isn't in the context twice."""
     conversation = [{"role": "system", "content": system_prompt or settings.DEFAULT_SYSTEM_PROMPT}]
     history = message_repository.get_history(db, session_id)
-    if (
-        regenerate
-        and len(history) >= 2
-        and history[-1].role == "assistant"
-        and history[-2].role == "user"
-        and history[-2].content == message
-    ):
-        history = history[:-2]
+    if regenerate and message_repository.is_redo_of_last_turn(history, message):
+        history = history[:-2]  # the question is added again below, so drop the old copy
 
     for past in history:
         conversation.append({"role": past.role, "content": past.content})
@@ -58,6 +53,10 @@ def save_turn(
             "resolution_source": metadata.resolution_source,
             "input_tokens": metadata.input_tokens,
             "output_tokens": metadata.output_tokens,
+            "model": metadata.model,
+            "latency_ms": metadata.latency_ms,
+            "key_id": metadata.key_id,
+            "fallback_attempts": metadata.fallback_attempts,
         },
         created_at=datetime.now(timezone.utc).isoformat(),
         regenerate=regenerate,
@@ -78,7 +77,7 @@ def process_chat(
 
     # If every key fails, return 503 and save nothing.
     try:
-        result = complete_chat(conversation, simulate_header, temperature, max_tokens)
+        result = complete_chat(conversation, simulate_header, temperature, max_tokens, skip_cache=regenerate)
     except Exception:
         raise HTTPException(status_code=503, detail="all providers unavailable")
 
@@ -120,7 +119,7 @@ def stream_chat(
 
     # Pick a working key BEFORE streaming starts, so "all keys failed" is still a real HTTP 503.
     try:
-        opened = open_stream(conversation, simulate_header, temperature, max_tokens)
+        opened = open_stream(conversation, simulate_header, temperature, max_tokens, skip_cache=regenerate)
     except Exception:
         raise HTTPException(status_code=503, detail="all providers unavailable")
 
@@ -137,6 +136,8 @@ def stream_chat(
 
         # Glue the chunks back into one full response (LiteLLM also estimates token counts here).
         full = litellm.stream_chunk_builder(chunks, messages=conversation)
+        if not regenerate:
+            sync_cache_keys(opened.model, conversation)
         reply = full.choices[0].message.content or ""
         from_cache = opened.from_cache
         metadata = ChatMetadata(

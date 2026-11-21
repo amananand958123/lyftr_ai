@@ -28,6 +28,7 @@ export function App() {
     handleSelectSession,
     sendMessage,
     regenerateLast,
+    stopStreaming,
     cumulativeTokens,
     latencyPoints,
   } = useChatSession();
@@ -39,6 +40,7 @@ export function App() {
   const [showSessionDrawer, setShowSessionDrawer] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showTelemetryHUD, setShowTelemetryHUD] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
@@ -46,20 +48,65 @@ export function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const isAtBottomRef = useRef(true);
+
+  const handleScroll = () => {
+    if (mainRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = mainRef.current;
+      isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
+    }
+  };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isAtBottomRef.current && mainRef.current) {
+      mainRef.current.scrollTop = mainRef.current.scrollHeight;
+    }
   }, [messages, isLoading]);
 
-  // Ask the backend for /health now and then every 30 seconds. null = backend not reachable.
+  // Ask the backend for /health now and then every 30 seconds.
+  // Pause polling when document.hidden to prevent draining Render free hours.
   useEffect(() => {
-    const checkHealth = () => fetchHealth().then(setHealth).catch(() => setHealth(null));
-    checkHealth();
-    const intervalId = setInterval(checkHealth, 30000);
-    return () => clearInterval(intervalId);
+    let intervalId: any = null;
+
+    const checkHealth = () => {
+      if (!document.hidden) {
+        fetchHealth().then(setHealth).catch(() => setHealth(null));
+      }
+    };
+
+    const startPolling = () => {
+      checkHealth();
+      if (!intervalId) {
+        intervalId = setInterval(checkHealth, 30000);
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
-  // Keyboard shortcuts: Cmd/Ctrl + a letter runs an action, Escape closes any open panel.
+  // Keyboard shortcuts: Cmd/Ctrl/Option + letter runs an action, Escape closes any open panel.
   useEffect(() => {
     const shortcuts: Record<string, () => void> = {
       k: () => setShowCommandPalette((open) => !open),
@@ -75,17 +122,42 @@ export function App() {
       if (e.key === 'Escape') {
         setShowTelemetryHUD(false);
         setShowSessionDrawer(false);
+        setShowCommandPalette(false);
         return;
       }
-      const action = shortcuts[e.key];
-      if ((e.metaKey || e.ctrlKey) && action) {
+      const isAlt = e.altKey;
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      // Chrome steals ⌘T and ⌘N for browser tabs/windows; support ⌥T / Alt+T and ⌥N / Alt+N
+      if ((isCmdOrCtrl || isAlt) && key === 'n') {
         e.preventDefault();
-        action();
+        handleNewSession();
+      } else if ((isCmdOrCtrl || isAlt) && key === 't') {
+        e.preventDefault();
+        setShowTelemetryHUD((open) => !open);
+      } else if (isCmdOrCtrl && shortcuts[key]) {
+        e.preventDefault();
+        shortcuts[key]();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sessionId, messages, handleNewSession, toggleTheme]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handlePurgeCache = async () => {
+    try {
+      await clearCache();
+      showToast('Gateway cache successfully purged');
+    } catch (err: any) {
+      setErrorBanner(`Failed to purge cache: ${err.message || 'unknown error'}`);
+    }
+  };
 
   const sendOptions = { systemPrompt, simulateRule, temperature, maxTokens };
 
@@ -101,8 +173,8 @@ export function App() {
   const handleRegenerate = () => regenerateLast(sendOptions);
 
   const commandList: CommandItem[] = [
-    { id: 'view-telemetry', title: 'Open Gateway Telemetry & Cache HUD', category: 'Gateway', shortcut: '⌘T', action: () => setShowTelemetryHUD(true) },
-    { id: 'new-sess', title: 'Start New Session', category: 'Session', shortcut: '⌘N', action: handleNewSession },
+    { id: 'view-telemetry', title: 'Open Gateway Telemetry & Cache HUD', category: 'Gateway', shortcut: '⌥T / ⌘T', action: () => setShowTelemetryHUD(true) },
+    { id: 'new-sess', title: 'Start New Session', category: 'Session', shortcut: '⌥N / ⌘N', action: handleNewSession },
     { id: 'view-sess', title: 'Open Stored Sessions', category: 'Session', shortcut: '⌘S', action: () => setShowSessionDrawer(true) },
     { id: 'toggle-theme', title: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', category: 'Theme', shortcut: '⌘D', action: toggleTheme },
     { id: 'export-md', title: 'Export Transcript (Markdown)', category: 'Export', shortcut: '⌘E', action: () => exportSessionMarkdown(sessionId, messages) },
@@ -113,7 +185,7 @@ export function App() {
     { id: 'sim-429', title: 'Failover: Simulate Rate Limit (key_1=429)', category: 'Failover', action: () => setSimulateRule('key_1=429') },
     { id: 'sim-500', title: 'Failover: Simulate Internal Error (key_1=500)', category: 'Failover', action: () => setSimulateRule('key_1=500') },
     { id: 'sim-all', title: 'Failover: Simulate Total Outage (*=429)', category: 'Failover', action: () => setSimulateRule('*=429') },
-    { id: 'clear-cache', title: 'Purge Gateway Cache', category: 'Cache', action: () => clearCache() },
+    { id: 'clear-cache', title: 'Purge Gateway Cache', category: 'Cache', action: handlePurgeCache },
   ];
 
   return (
@@ -179,7 +251,11 @@ export function App() {
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto my-3 sm:my-4 pr-1 sm:pr-2 space-y-4">
+      <main
+        ref={mainRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto my-3 sm:my-4 pr-1 sm:pr-2 space-y-4"
+      >
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 sm:p-10 text-ink-muted max-w-md mx-auto animate-apple-entrance">
             <div className="w-12 h-12 rounded-2xl bg-paper-2 border border-rule flex items-center justify-center mb-4 shadow-sm">
@@ -233,6 +309,7 @@ export function App() {
         setInputText={setInputText}
         onSubmit={handleSend}
         isLoading={isLoading}
+        onStop={stopStreaming}
         sessionId={sessionId}
         messages={messages}
         latencyPoints={latencyPoints}
@@ -258,6 +335,13 @@ export function App() {
         onClose={() => setShowCommandPalette(false)}
         commands={commandList}
       />
+
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-paper-2 border border-rule shadow-lg rounded-[10px] text-xs font-mono text-ok flex items-center gap-2 animate-apple-entrance">
+          <span className="w-2 h-2 rounded-full bg-ok" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

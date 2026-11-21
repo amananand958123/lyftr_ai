@@ -43,7 +43,7 @@ export interface HistoryResponse {
   messages: Array<{
     role: 'user' | 'assistant';
     content: string;
-    metadata?: Pick<ChatMetadata, 'resolution_source' | 'input_tokens' | 'output_tokens'>;
+    metadata?: Partial<ChatMetadata>;
   }>;
 }
 
