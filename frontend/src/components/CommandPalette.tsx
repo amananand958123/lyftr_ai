@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export interface CommandItem {
   id: string;
   title: string;
   category: string;
+  shortcut?: string;
   action: () => void;
 }
 
@@ -13,47 +14,53 @@ interface CommandPaletteProps {
   commands: CommandItem[];
 }
 
-export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, commands }) => {
+export const CommandPalette: React.FC<CommandPaletteProps> = ({
+  isOpen,
+  onClose,
+  commands,
+}) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setQuery('');
       setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
 
-  const filtered = commands.filter((c) =>
-    c.title.toLowerCase().includes(query.toLowerCase()) ||
-    c.category.toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = commands.filter((cmd) => {
+    const q = query.toLowerCase();
+    return (
+      cmd.title.toLowerCase().includes(q) ||
+      cmd.category.toLowerCase().includes(q)
+    );
+  });
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
+    setSelectedIndex(0);
+  }, [query]);
 
-      if (e.key === 'Escape') {
-        e.preventDefault();
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % (filtered.length || 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + (filtered.length || 1)) % (filtered.length || 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered[selectedIndex]) {
+        filtered[selectedIndex].action();
         onClose();
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % (filtered.length || 1));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev - 1 + (filtered.length || 1)) % (filtered.length || 1));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (filtered[selectedIndex]) {
-          filtered[selectedIndex].action();
-          onClose();
-        }
       }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, filtered, selectedIndex, onClose]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -65,29 +72,42 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         onClick={onClose}
       />
 
-      {/* Palette box */}
-      <div className="relative w-full max-w-lg bg-paper-2 border border-rule rounded-[14px] shadow-2xl z-10 overflow-hidden animate-apple-entrance">
-        <div className="p-3 border-b border-rule-subtle flex items-center gap-2">
-          <span className="font-mono text-accent text-sm">⌘</span>
+      {/* Palette Modal */}
+      <div className="relative w-full max-w-lg bg-paper-2 border border-rule rounded-[16px] shadow-2xl overflow-hidden z-10 animate-apple-entrance">
+        <div className="flex items-center px-4 py-3 border-b border-rule-subtle gap-2.5">
+          <svg
+            className="w-4 h-4 text-ink-subtle"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+
           <input
+            ref={inputRef}
             type="text"
-            autoFocus
-            placeholder="Type a command or search..."
             value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(0);
-            }}
-            className="w-full bg-transparent text-sm text-ink placeholder-ink-subtle focus:outline-none"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a command or search actions..."
+            className="w-full bg-transparent text-ink placeholder-ink-subtle text-sm focus:outline-none font-body"
           />
-          <span className="text-[10px] font-mono text-ink-subtle bg-paper-3 px-1.5 py-0.5 rounded border border-rule-subtle">
-            esc
-          </span>
+
+          <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-paper-3 border border-rule-subtle text-[10px] font-mono text-ink-subtle">
+            ESC
+          </kbd>
         </div>
 
-        <div className="max-h-72 overflow-y-auto p-1.5 space-y-0.5">
+        <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filtered.length === 0 ? (
-            <div className="p-4 text-center text-xs text-ink-subtle">No matching commands</div>
+            <div className="text-center py-8 text-xs text-ink-subtle">
+              No matching commands
+            </div>
           ) : (
             filtered.map((cmd, idx) => {
               const isSelected = idx === selectedIndex;
@@ -99,18 +119,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                     onClose();
                   }}
                   onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`px-3 py-2 rounded-[8px] cursor-pointer flex items-center justify-between text-xs transition-[background-color] duration-100 ${
+                  className={`px-3 py-2.5 rounded-[10px] text-xs flex items-center justify-between cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-paper-3 text-ink border border-rule-subtle'
+                      ? 'bg-paper-3 text-ink font-medium shadow-sm'
                       : 'text-ink-muted hover:text-ink'
                   }`}
                 >
-                  <span className="font-medium">{cmd.title}</span>
-                  <span className="text-[10px] font-mono text-ink-subtle">{cmd.category}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-paper-2 border border-rule-subtle text-ink-subtle">
+                      {cmd.category}
+                    </span>
+                    <span>{cmd.title}</span>
+                  </div>
+
+                  {cmd.shortcut && (
+                    <kbd className="px-1.5 py-0.5 rounded bg-paper-2 border border-rule-subtle text-[10px] font-mono text-ink-subtle">
+                      {cmd.shortcut}
+                    </kbd>
+                  )}
                 </div>
               );
             })
           )}
+        </div>
+
+        <div className="px-4 py-2 bg-paper-3/40 border-t border-rule-subtle flex items-center justify-between text-[11px] font-mono text-ink-subtle">
+          <span>Navigate with ↑ / ↓</span>
+          <span>Select with ↵</span>
         </div>
       </div>
     </div>

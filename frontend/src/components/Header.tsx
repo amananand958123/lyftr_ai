@@ -11,6 +11,7 @@ interface HeaderProps {
   onNewSession: () => void;
   onOpenSessionDrawer: () => void;
   onOpenCommandPalette: () => void;
+  onOpenTelemetryHUD: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
 }
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNewSession,
   onOpenSessionDrawer,
   onOpenCommandPalette,
+  onOpenTelemetryHUD,
   isDark,
   onToggleTheme,
 }) => {
@@ -44,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold tracking-tight">Lyftr AI</h1>
+            <h1 className="text-sm font-semibold tracking-tight font-display">Lyftr AI</h1>
             <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-[4px] bg-paper-3 border border-rule-subtle text-ink-subtle font-mono">
               gateway
             </span>
@@ -55,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={handleCopySession}
               className="hover:text-ink transition-colors flex items-center gap-1"
-              title="Copy Session ID"
+              title="Click to copy Session ID"
             >
               <span>session:</span>
               <span className="text-ink underline decoration-rule hover:decoration-ink">
@@ -64,14 +66,19 @@ export const Header: React.FC<HeaderProps> = ({
               {copiedSession && <span className="text-[10px] text-ok">copied</span>}
             </button>
             <span className="text-ink-subtle">·</span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-ok animate-apple-pulse" />
-              <span className="text-ink-muted font-mono text-[11px]">
+            <button
+              type="button"
+              onClick={onOpenTelemetryHUD}
+              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity group cursor-pointer"
+              title="Click to view Gateway Observability & Telemetry HUD"
+            >
+              <span className="w-2 h-2 rounded-full bg-ok animate-apple-pulse group-hover:scale-125 transition-transform" />
+              <span className="text-ink-muted group-hover:text-ink font-mono text-[11px] underline decoration-rule-subtle group-hover:decoration-ink">
                 {health?.status === 'ok'
                   ? `${health.keys_configured} keys active`
                   : '2 keys active'}
               </span>
-            </span>
+            </button>
           </div>
         </div>
       </div>
@@ -81,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
           type="button"
           onClick={onOpenSessionDrawer}
           className="px-2.5 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium"
-          title="Browse past sessions"
+          title="Browse past stored sessions (⌘S)"
         >
           <span>history</span>
         </button>
@@ -116,7 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
           type="button"
           onClick={onNewSession}
           className="px-2.5 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium"
-          title="Start New Session"
+          title="Start New Session (⌘N)"
         >
           <span>new</span>
         </button>
@@ -125,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({
           type="button"
           onClick={onToggleTheme}
           className="px-2.5 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium flex items-center gap-1.5"
-          title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          title={isDark ? "Switch to Light Mode (⌘D)" : "Switch to Dark Mode (⌘D)"}
           aria-label="Toggle theme"
         >
           {isDark ? (
@@ -157,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
           type="button"
           onClick={onOpenCommandPalette}
           className="hidden sm:inline-flex px-2 py-1.5 rounded-[8px] bg-paper-3 border border-rule-subtle text-[11px] font-mono text-ink-subtle hover:text-ink hover:border-rule"
-          title="Open Command Palette"
+          title="Open Command Palette (⌘K)"
         >
           ⌘K
         </button>

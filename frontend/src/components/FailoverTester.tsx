@@ -13,12 +13,71 @@ export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onS
     { label: '*=429', value: '*=429', desc: 'Exhaust all keys -> clean HTTP 503 response' },
   ];
 
+  // Visual trace representation
+  const renderRoutingPipeline = () => {
+    if (!currentRule) {
+      return (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink-muted">
+          <span className="text-ink">Client</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-ok font-semibold">key_1: Groq</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-ok font-medium">200 OK</span>
+        </div>
+      );
+    }
+
+    if (currentRule === 'key_1=429') {
+      return (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
+          <span className="text-ink">Client</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-bad line-through decoration-bad font-semibold">key_1 (429 RateLimit)</span>
+          <span className="text-accent font-bold">➔ [failover] ➔</span>
+          <span className="text-ok font-semibold">key_2: Gemini</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-ok font-medium">200 OK</span>
+        </div>
+      );
+    }
+
+    if (currentRule === 'key_1=500') {
+      return (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
+          <span className="text-ink">Client</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-bad line-through decoration-bad font-semibold">key_1 (500 Error)</span>
+          <span className="text-accent font-bold">➔ [failover] ➔</span>
+          <span className="text-ok font-semibold">key_2: Gemini</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-ok font-medium">200 OK</span>
+        </div>
+      );
+    }
+
+    if (currentRule === '*=429') {
+      return (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
+          <span className="text-ink">Client</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-bad line-through decoration-bad font-semibold">key_1 (429)</span>
+          <span className="text-ink-subtle">➔</span>
+          <span className="text-bad line-through decoration-bad font-semibold">key_2 (429)</span>
+          <span className="text-bad font-bold">➔</span>
+          <span className="text-bad font-semibold bg-bad-soft px-1 rounded">503 Service Unavailable</span>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div className="bg-paper-2/60 border border-rule-subtle rounded-[12px] p-2.5 transition-colors">
       <div className="flex items-center justify-between mb-2 px-1">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-ink-muted">Failover Simulation</span>
-          <span className="text-[11px] font-mono text-ink-subtle bg-paper-3 px-1.5 py-0.5 rounded border border-rule-subtle">
+          <span className="text-xs text-ink font-medium">Failover Simulation Testbench</span>
+          <span className="text-[10px] font-mono text-ink-subtle bg-paper-3 px-1.5 py-0.5 rounded border border-rule-subtle">
             X-Simulate-Failure
           </span>
         </div>
@@ -32,7 +91,7 @@ export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onS
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
         {options.map((opt) => {
           const isActive = currentRule === opt.value;
           return (
@@ -42,20 +101,26 @@ export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onS
               onClick={() => onSelectRule(opt.value)}
               className={`px-3 py-2 rounded-[8px] border text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] ${
                 isActive
-                  ? 'bg-paper-3 border-rule-2 text-ink shadow-sm'
+                  ? 'bg-paper-3 border-rule-2 text-ink shadow-sm ring-1 ring-rule-2'
                   : 'bg-paper-3/40 border-rule-subtle hover:border-rule text-ink-muted hover:text-ink hover:bg-paper-3/70'
               }`}
               title={opt.desc}
             >
-              <div className="font-mono text-xs font-medium leading-none mb-1">
+              <div className="font-mono text-xs font-semibold leading-none mb-1">
                 {opt.label}
               </div>
-              <div className="text-[11px] text-ink-subtle truncate">
+              <div className="text-[10px] text-ink-subtle truncate">
                 {opt.desc}
               </div>
             </button>
           );
         })}
+      </div>
+
+      {/* Visual routing trace */}
+      <div className="px-2 py-1.5 rounded-[6px] bg-paper-3/60 border border-rule-subtle/60 flex items-center justify-between">
+        <span className="text-[10px] font-mono text-ink-subtle uppercase">Routing Pipeline:</span>
+        {renderRoutingPipeline()}
       </div>
     </div>
   );

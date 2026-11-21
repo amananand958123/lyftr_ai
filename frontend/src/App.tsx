@@ -10,6 +10,7 @@ import { FailoverTester } from './components/FailoverTester';
 import { PromptPresets } from './components/PromptPresets';
 import { TuningDrawer } from './components/TuningDrawer';
 import { SessionDrawer } from './components/SessionDrawer';
+import { TelemetryHUD } from './components/TelemetryHUD';
 import { CommandPalette, CommandItem } from './components/CommandPalette';
 import { exportSessionMarkdown, exportSessionJSON } from './utils/export';
 
@@ -35,6 +36,7 @@ export function App() {
   const [showTuning, setShowTuning] = useState(false);
   const [showSessionDrawer, setShowSessionDrawer] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showTelemetryHUD, setShowTelemetryHUD] = useState(false);
 
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
@@ -72,17 +74,35 @@ export function App() {
     };
   }, []);
 
-  // Global Keyboard Shortcuts (Cmd+K for Command Palette) (US-012)
+  // Global Keyboard Shortcuts (Cmd+K, Cmd+T, Cmd+N, Cmd+D, etc.)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (!isCmdOrCtrl) return;
+
+      if (e.key === 'k') {
         e.preventDefault();
         setShowCommandPalette((prev) => !prev);
+      } else if (e.key === 't') {
+        e.preventDefault();
+        setShowTelemetryHUD((prev) => !prev);
+      } else if (e.key === 'n') {
+        e.preventDefault();
+        handleNewSession();
+      } else if (e.key === 'd') {
+        e.preventDefault();
+        toggleTheme();
+      } else if (e.key === 'e') {
+        e.preventDefault();
+        exportSessionMarkdown(sessionId, messages);
+      } else if (e.key === 'j') {
+        e.preventDefault();
+        exportSessionJSON(sessionId, messages);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [sessionId, messages, handleNewSession, toggleTheme]);
 
   const handleSend = (e?: React.FormEvent, customPrompt?: string) => {
     if (e) e.preventDefault();
@@ -108,10 +128,12 @@ export function App() {
   };
 
   const commandList: CommandItem[] = useMemo(() => [
-    { id: 'new-sess', title: 'Start New Session', category: 'Session', action: handleNewSession },
-    { id: 'view-sess', title: 'Open Stored Sessions', category: 'Session', action: () => setShowSessionDrawer(true) },
-    { id: 'export-md', title: 'Export Transcript (Markdown)', category: 'Export', action: () => exportSessionMarkdown(sessionId, messages) },
-    { id: 'export-json', title: 'Export Transcript (JSON)', category: 'Export', action: () => exportSessionJSON(sessionId, messages) },
+    { id: 'view-telemetry', title: 'Open Gateway Telemetry & Cache HUD', category: 'Gateway', shortcut: '⌘T', action: () => setShowTelemetryHUD(true) },
+    { id: 'new-sess', title: 'Start New Session', category: 'Session', shortcut: '⌘N', action: handleNewSession },
+    { id: 'view-sess', title: 'Open Stored Sessions', category: 'Session', shortcut: '⌘S', action: () => setShowSessionDrawer(true) },
+    { id: 'toggle-theme', title: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', category: 'Theme', shortcut: '⌘D', action: toggleTheme },
+    { id: 'export-md', title: 'Export Transcript (Markdown)', category: 'Export', shortcut: '⌘E', action: () => exportSessionMarkdown(sessionId, messages) },
+    { id: 'export-json', title: 'Export Transcript (JSON)', category: 'Export', shortcut: '⌘J', action: () => exportSessionJSON(sessionId, messages) },
     { id: 'toggle-sys', title: 'Toggle System Prompt', category: 'Config', action: () => setShowSystemPrompt((p) => !p) },
     { id: 'toggle-tune', title: 'Toggle Hyperparameters Tuning', category: 'Config', action: () => setShowTuning((p) => !p) },
     { id: 'sim-norm', title: 'Failover: Normal Direct Execution', category: 'Failover', action: () => setSimulateRule('') },
@@ -119,7 +141,6 @@ export function App() {
     { id: 'sim-500', title: 'Failover: Simulate Internal Error (key_1=500)', category: 'Failover', action: () => setSimulateRule('key_1=500') },
     { id: 'sim-all', title: 'Failover: Simulate Total Outage (*=429)', category: 'Failover', action: () => setSimulateRule('*=429') },
     { id: 'clear-cache', title: 'Purge Gateway Cache', category: 'Cache', action: () => clearCache() },
-    { id: 'toggle-theme', title: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', category: 'Theme', action: toggleTheme },
   ], [sessionId, messages, isDark, handleNewSession, toggleTheme]);
 
   return (
@@ -134,6 +155,7 @@ export function App() {
         onNewSession={handleNewSession}
         onOpenSessionDrawer={() => setShowSessionDrawer(true)}
         onOpenCommandPalette={() => setShowCommandPalette(true)}
+        onOpenTelemetryHUD={() => setShowTelemetryHUD(true)}
         isDark={isDark}
         onToggleTheme={toggleTheme}
       />
@@ -193,7 +215,7 @@ export function App() {
             <h2 className="text-base font-semibold text-ink mb-1.5 tracking-tight font-display">
               Resilient intelligence.
             </h2>
-            <p className="text-xs text-ink-subtle leading-relaxed mb-6">
+            <p className="text-xs text-ink-subtle leading-relaxed mb-6 font-body">
               Fault-tolerant multi-provider gateway with autonomous key rotation, local caching, and SQLite session persistence.
             </p>
 
@@ -251,6 +273,14 @@ export function App() {
         activeSessionId={sessionId}
         onClose={() => setShowSessionDrawer(false)}
         onSelectSession={handleSelectSession}
+      />
+
+      <TelemetryHUD
+        isOpen={showTelemetryHUD}
+        onClose={() => setShowTelemetryHUD(false)}
+        health={health}
+        messages={messages}
+        cumulativeTokens={cumulativeTokens}
       />
 
       <CommandPalette

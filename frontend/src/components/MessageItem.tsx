@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ChatMessage } from '../types';
 import { MetadataBadge } from './MetadataBadge';
-import { CodeBlock } from './CodeBlock';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -12,31 +12,28 @@ interface MessageItemProps {
 export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate, cumulativeTokens }) => {
   const isUser = message.role === 'user';
   const isError = message.isError;
+  const [copiedText, setCopiedText] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
 
-  // Simple, robust helper to format code blocks inside ```
-  const renderFormattedContent = (text: string) => {
-    if (!text.includes('```')) {
-      return <div className="whitespace-pre-wrap break-words">{text}</div>;
-    }
+  const handleCopyText = () => {
+    navigator.clipboard.writeText(message.content);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 1600);
+  };
 
-    const parts = text.split(/(```[\s\S]*?```)/g);
-    return (
-      <div className="space-y-1">
-        {parts.map((part, index) => {
-          if (part.startsWith('```') && part.endsWith('```')) {
-            const firstLineEnd = part.indexOf('\n');
-            const lang = firstLineEnd !== -1 ? part.substring(3, firstLineEnd).trim() : '';
-            const code = firstLineEnd !== -1 ? part.substring(firstLineEnd + 1, part.length - 3) : part.substring(3, part.length - 3);
-            return <CodeBlock key={index} language={lang} code={code} />;
-          }
-          return (
-            <div key={index} className="whitespace-pre-wrap break-words">
-              {part}
-            </div>
-          );
-        })}
-      </div>
+  const handleCopyJson = () => {
+    const jsonStr = JSON.stringify(
+      {
+        role: message.role,
+        content: message.content,
+        metadata: message.metadata,
+      },
+      null,
+      2
     );
+    navigator.clipboard.writeText(jsonStr);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 1600);
   };
 
   if (isUser) {
@@ -64,30 +61,66 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
           className={`rounded-[16px] rounded-bl-[4px] px-5 py-4 border transition-colors ${
             isError
               ? 'bg-bad-soft/40 border-bad/30 text-ink'
-              : 'bg-paper-2/90 border-rule text-ink'
+              : 'bg-paper-2/90 border-rule text-ink shadow-sm'
           }`}
         >
-          <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-rule-subtle">
+          {/* Header toolbar */}
+          <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-rule-subtle">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-ink-muted">Lyftr Gateway</span>
-              <span className="text-[11px] font-mono text-ink-subtle">assistant</span>
+              <span className="w-2 h-2 rounded-full bg-accent" />
+              <span className="text-xs font-semibold text-ink tracking-tight">Lyftr Gateway</span>
+              <span className="text-[10px] uppercase tracking-wider font-mono px-1 py-0.5 rounded bg-paper-3 text-ink-subtle border border-rule-subtle">
+                assistant
+              </span>
             </div>
-            {onRegenerate && !isError && (
+
+            <div className="flex items-center gap-2 text-[11px] font-mono text-ink-subtle">
               <button
                 type="button"
-                onClick={onRegenerate}
-                className="text-[11px] font-mono text-ink-subtle hover:text-ink transition-colors flex items-center gap-1"
-                title="Regenerate this response"
+                onClick={handleCopyText}
+                className="hover:text-ink transition-colors flex items-center gap-1"
+                title="Copy markdown content"
               >
-                <span>regenerate</span>
+                <span>{copiedText ? 'copied text' : 'copy text'}</span>
               </button>
+
+              <span className="text-rule-2">·</span>
+
+              <button
+                type="button"
+                onClick={handleCopyJson}
+                className="hover:text-ink transition-colors flex items-center gap-1"
+                title="Copy message and metadata as JSON"
+              >
+                <span>{copiedJson ? 'copied json' : 'json'}</span>
+              </button>
+
+              {onRegenerate && !isError && (
+                <>
+                  <span className="text-rule-2">·</span>
+                  <button
+                    type="button"
+                    onClick={onRegenerate}
+                    className="hover:text-ink transition-colors flex items-center gap-1 text-accent hover:underline"
+                    title="Regenerate this response"
+                  >
+                    <span>regenerate</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Formatted body */}
+          <div className="text-sm leading-relaxed font-body">
+            {isError ? (
+              <div className="text-bad font-mono text-xs whitespace-pre-wrap">{message.content}</div>
+            ) : (
+              <MarkdownRenderer content={message.content} />
             )}
           </div>
 
-          <div className="text-sm leading-relaxed font-body">
-            {renderFormattedContent(message.content)}
-          </div>
-
+          {/* Metadata badge and telemetry */}
           {message.metadata && (
             <MetadataBadge metadata={message.metadata} cumulativeTokens={cumulativeTokens} />
           )}
