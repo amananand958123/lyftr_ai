@@ -7,14 +7,17 @@ class Settings(BaseSettings):
     """App settings, read from environment variables or a .env file."""
 
     DATABASE_URL: str = "sqlite:///./data/app.db"
-    LLM_API_KEYS: str = "key_1:gemini/gemini-2.0-flash:placeholder_key_1,key_2:gemini/gemini-2.0-flash:placeholder_key_2"
+    LLM_API_KEYS: str = (
+        "key_1:groq/openai/gpt-oss-20b:placeholder_key_1,"
+        "key_2:gemini/gemini-2.5-flash-lite:placeholder_key_2"
+    )
     ALLOWED_ORIGINS: str = (
         "http://localhost:3000,http://127.0.0.1:3000,"
         "http://localhost:5173,http://127.0.0.1:5173,"
-        "https://lyftr-ai-xi.vercel.app"
+        "https://lyftr-ai-xi.vercel.app,https://lyftr-chat.vercel.app"
     )
     ENABLE_FAILURE_SIMULATION: bool = True
-    DEFAULT_MODEL: str = "gemini/gemini-2.0-flash"
+    DEFAULT_MODEL: str = "groq/openai/gpt-oss-20b"
     DEFAULT_SYSTEM_PROMPT: str = (
         "You are a helpful and concise AI assistant. "
         "Format answers in Markdown, and always put code inside fenced code blocks with a language tag, like ```sql."
@@ -44,7 +47,26 @@ class Settings(BaseSettings):
                 model = self.DEFAULT_MODEL
             else:
                 key_id, model, api_key = f"key_{position}", self.DEFAULT_MODEL, entry
-            pool.append({"key_id": key_id.strip(), "model": model.strip(), "api_key": api_key.strip()})
+
+            clean_key = api_key.strip().strip("'\"")
+            clean_model = model.strip()
+
+            pool.append({"key_id": key_id.strip(), "model": clean_model, "api_key": clean_key})
+
+        # Ensure backup failover resilience:
+        # If pool lacks groq/openai/gpt-oss-120b, synthesize a backup entry using
+        # the configured Groq key from key_1 or environment.
+        existing_models = {k["model"] for k in pool}
+        groq_key = next((k["api_key"] for k in pool if k["api_key"].startswith("gsk_") and not (k["api_key"].startswith("placeholder") or k["api_key"].startswith("YOUR_"))), None)
+
+        if groq_key and "groq/openai/gpt-oss-120b" not in existing_models:
+            next_idx = len(pool) + 1
+            pool.append({
+                "key_id": f"key_{next_idx}",
+                "model": "groq/openai/gpt-oss-120b",
+                "api_key": groq_key,
+            })
+
         return pool
 
 

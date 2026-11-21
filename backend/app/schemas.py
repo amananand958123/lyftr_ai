@@ -14,6 +14,8 @@ class DeepProviderHealth(BaseModel):
     model: str
     status: str
     latency_ms: Optional[int] = None
+    error: Optional[str] = None
+    key_preview: Optional[str] = None
 
 class DeepHealthResponse(BaseModel):
     status: str

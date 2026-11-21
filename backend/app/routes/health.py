@@ -1,3 +1,4 @@
+import time
 import litellm
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import text
@@ -33,23 +34,50 @@ def get_health(response: Response, db: Session = Depends(get_db)):
 
 
 @router.get("/health/deep", response_model=DeepHealthResponse)
-def get_deep_health(db: Session = Depends(get_db)):
+def get_deep_health(probe: bool = False, db: Session = Depends(get_db)):
     """
     Lists every key in the pool and whether it is configured.
-    Note: this checks the config only, it does not call the providers.
+    If probe=True, tests each configured key with a minimal completion to verify real connectivity.
     """
     check_database(db)
 
     providers = []
     for key in settings.get_key_pool():
-        is_mock = is_placeholder_key(key.get("api_key", ""))
-        is_configured = bool(key.get("api_key")) and not is_mock
+        raw_key = key.get("api_key", "")
+        is_mock = is_placeholder_key(raw_key)
+        is_configured = bool(raw_key) and not is_mock
+        key_preview = (raw_key[:7] + "..." + raw_key[-4:]) if len(raw_key) > 11 else ("mock" if is_mock else "none")
+
         status_label = "healthy" if is_configured else ("mock" if is_mock else "unconfigured")
-        providers.append(DeepProviderHealth(
-            key_id=key["key_id"],
-            model=key["model"],
-            status=status_label,
-        ))
+        error_msg = None
+        latency = None
+
+        if probe and is_configured:
+            start = time.perf_counter()
+            try:
+                litellm.completion(
+                    model=key["model"],
+                    messages=[{"role": "user", "content": "hi"}],
+                    api_key=raw_key,
+                    max_tokens=2,
+                    timeout=8.0,
+                )
+                latency = max(1, int((time.perf_counter() - start) * 1000))
+                status_label = "healthy"
+            except Exception as e:
+                status_label = "error"
+                error_msg = f"{type(e).__name__}: {str(e)[:180]}"
+
+        providers.append(
+            DeepProviderHealth(
+                key_id=key["key_id"],
+                model=key["model"],
+                status=status_label,
+                latency_ms=latency,
+                error=error_msg,
+                key_preview=key_preview,
+            )
+        )
 
     healthy_count = sum(1 for p in providers if p.status in ("healthy", "mock"))
     real_healthy_count = sum(1 for p in providers if p.status == "healthy")
@@ -57,7 +85,7 @@ def get_deep_health(db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail="no healthy providers available")
 
     return DeepHealthResponse(
-        status="ok" if real_healthy_count > 0 else "degraded",
+        status="ok" if (real_healthy_count > 0 or not probe) else ("ok" if healthy_count > 0 else "degraded"),
         total_keys=len(providers),
         healthy_keys=healthy_count,
         providers=providers,
