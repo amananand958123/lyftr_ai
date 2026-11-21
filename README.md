@@ -16,8 +16,8 @@ A full-stack, production-grade LLM chatbot built for the **Lyftr AI Full-Stack A
 ### With Docker (Recommended)
 ```bash
 # 1. Clone repository
-git clone <your-repo-url>
-cd lyftr-ai
+git clone https://github.com/amananand958123/lyftr_ai.git
+cd lyftr_ai
 
 # 2. Copy and customize environment variables
 cp .env.example .env
