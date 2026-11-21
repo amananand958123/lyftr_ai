@@ -24,6 +24,7 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0, le=8192)
+    regenerate: Optional[bool] = False
 
     @field_validator("message")
     @classmethod

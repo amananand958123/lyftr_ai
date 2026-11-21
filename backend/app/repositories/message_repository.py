@@ -18,8 +18,31 @@ def get_history(db: Session, session_id: str) -> List[Message]:
     )
 
 
-def save_turn(db: Session, session_id: str, user_text: str, reply: str, reply_metadata: dict, created_at: str):
-    """Save the user's message and the assistant's reply together in one commit."""
+def save_turn(
+    db: Session,
+    session_id: str,
+    user_text: str,
+    reply: str,
+    reply_metadata: dict,
+    created_at: str,
+    regenerate: bool = False,
+):
+    """Save the user's message and the assistant's reply together in one commit.
+    When regenerating, update the last assistant reply in place instead of duplicating the turn."""
+    if regenerate:
+        history = get_history(db, session_id)
+        if (
+            len(history) >= 2
+            and history[-1].role == "assistant"
+            and history[-2].role == "user"
+            and history[-2].content == user_text
+        ):
+            history[-1].content = reply
+            history[-1].metadata_json = json.dumps(reply_metadata)
+            history[-1].created_at = created_at
+            db.commit()
+            return
+
     db.add(Message(session_id=session_id, role="user", content=user_text, created_at=created_at))
     db.add(Message(
         session_id=session_id,

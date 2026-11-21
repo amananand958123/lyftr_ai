@@ -14,17 +14,40 @@ from app.repositories import message_repository
 from app.schemas import ChatMetadata, ChatResponse
 
 
-def build_conversation(db: Session, session_id: str, message: str, system_prompt: Optional[str]) -> List[Dict[str, str]]:
+def build_conversation(
+    db: Session,
+    session_id: str,
+    message: str,
+    system_prompt: Optional[str],
+    regenerate: bool = False,
+) -> List[Dict[str, str]]:
     """System prompt + past messages + the new message.
-    (The cache key is this whole list, so the same conversation gives a cache hit.)"""
+    When regenerating, drop the last turn so the prompt is not duplicated in LLM context."""
     conversation = [{"role": "system", "content": system_prompt or settings.DEFAULT_SYSTEM_PROMPT}]
-    for past in message_repository.get_history(db, session_id):
+    history = message_repository.get_history(db, session_id)
+    if (
+        regenerate
+        and len(history) >= 2
+        and history[-1].role == "assistant"
+        and history[-2].role == "user"
+        and history[-2].content == message
+    ):
+        history = history[:-2]
+
+    for past in history:
         conversation.append({"role": past.role, "content": past.content})
     conversation.append({"role": "user", "content": message})
     return conversation
 
 
-def save_turn(db: Session, session_id: str, message: str, reply: str, metadata: ChatMetadata):
+def save_turn(
+    db: Session,
+    session_id: str,
+    message: str,
+    reply: str,
+    metadata: ChatMetadata,
+    regenerate: bool = False,
+):
     """Only successful turns reach this point, so failed requests are never saved."""
     message_repository.save_turn(
         db,
@@ -37,6 +60,7 @@ def save_turn(db: Session, session_id: str, message: str, reply: str, metadata: 
             "output_tokens": metadata.output_tokens,
         },
         created_at=datetime.now(timezone.utc).isoformat(),
+        regenerate=regenerate,
     )
 
 
@@ -48,8 +72,9 @@ def process_chat(
     simulate_header: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    regenerate: bool = False,
 ) -> ChatResponse:
-    conversation = build_conversation(db, session_id, message, system_prompt)
+    conversation = build_conversation(db, session_id, message, system_prompt, regenerate=regenerate)
 
     # If every key fails, return 503 and save nothing.
     try:
@@ -66,7 +91,7 @@ def process_chat(
         key_id=result.key_id,
         fallback_attempts=result.fallback_attempts,
     )
-    save_turn(db, session_id, message, result.reply, metadata)
+    save_turn(db, session_id, message, result.reply, metadata, regenerate=regenerate)
     return ChatResponse(session_id=session_id, reply=result.reply, metadata=metadata)
 
 
@@ -83,6 +108,7 @@ def stream_chat(
     simulate_header: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    regenerate: bool = False,
 ) -> Iterator[str]:
     """
     Like process_chat, but sends the reply piece by piece as Server-Sent Events:
@@ -90,7 +116,7 @@ def stream_chat(
       {"type": "done", "metadata": {...}}    once at the end (same metadata as /chat)
       {"type": "error", "detail": "..."}     if the provider breaks mid-reply (nothing is saved)
     """
-    conversation = build_conversation(db, session_id, message, system_prompt)
+    conversation = build_conversation(db, session_id, message, system_prompt, regenerate=regenerate)
 
     # Pick a working key BEFORE streaming starts, so "all keys failed" is still a real HTTP 503.
     try:
@@ -122,7 +148,7 @@ def stream_chat(
             key_id=None if from_cache else opened.key_id,
             fallback_attempts=0 if from_cache else opened.fallback_attempts,
         )
-        save_turn(db, session_id, message, reply, metadata)
+        save_turn(db, session_id, message, reply, metadata, regenerate=regenerate)
         yield sse_event({"type": "done", "metadata": metadata.model_dump()})
 
     return events()

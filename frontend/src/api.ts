@@ -75,12 +75,16 @@ export async function streamChatMessage(
   if (options.simulateRule?.trim()) {
     headers['X-Simulate-Failure'] = options.simulateRule.trim();
   }
+  if (options.regenerate) {
+    headers['X-Regenerate'] = 'true';
+  }
   const body = {
     session_id: sessionId,
     message: message.trim(),
     system_prompt: options.systemPrompt?.trim() || undefined, // undefined fields are dropped by JSON.stringify
     temperature: options.temperature,
     max_tokens: options.maxTokens,
+    regenerate: options.regenerate || undefined,
   };
 
   const res = await fetch(`${API_BASE_URL}/chat/stream`, { method: 'POST', headers, body: JSON.stringify(body) });

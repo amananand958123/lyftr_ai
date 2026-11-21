@@ -7,6 +7,7 @@ export interface SendOptions {
   simulateRule?: string;
   temperature?: number;
   maxTokens?: number;
+  regenerate?: boolean;
 }
 
 // e.g. "s-k3j9x2a"
@@ -100,7 +101,7 @@ export function useChatSession() {
       if (!lastUserMessage || isLoading) return;
 
       setMessages((prev) => (prev[prev.length - 1]?.role === 'assistant' ? prev.slice(0, -1) : prev));
-      await sendMessage(lastUserMessage.content, options, true);
+      await sendMessage(lastUserMessage.content, { ...options, regenerate: true }, true);
     },
     [messages, isLoading, sendMessage]
   );
