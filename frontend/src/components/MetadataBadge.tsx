@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChatMetadata } from '../types';
+import { COST_PER_TOKEN } from '../utils/export';
 
 interface MetadataBadgeProps {
   metadata: ChatMetadata;
@@ -9,9 +10,7 @@ interface MetadataBadgeProps {
 export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulativeTokens }) => {
   const isCache = metadata.resolution_source === 'LLM_CACHE';
 
-  // Rough estimation: blended ~$0.15 per million tokens for lightweight models
-  const totalTokens = metadata.input_tokens + metadata.output_tokens;
-  const estimatedCost = (totalTokens * 0.00000015).toFixed(6);
+  const estimatedCost = ((metadata.input_tokens + metadata.output_tokens) * COST_PER_TOKEN).toFixed(6);
 
   return (
     <div className="mt-3 pt-2.5 border-t border-rule-subtle flex flex-wrap items-center gap-2 text-xs font-mono">

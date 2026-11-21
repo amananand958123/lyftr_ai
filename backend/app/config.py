@@ -1,8 +1,11 @@
-from typing import List, Dict, Optional
+from typing import Dict, List
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
+
 
 class Settings(BaseSettings):
+    """App settings, read from environment variables or a .env file."""
+
     DATABASE_URL: str = "sqlite:///./data/app.db"
     LLM_API_KEYS: str = "key_1:gemini/gemini-2.0-flash:placeholder_key_1,key_2:gemini/gemini-2.0-flash:placeholder_key_2"
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -10,45 +13,32 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "gemini/gemini-2.0-flash"
     DEFAULT_SYSTEM_PROMPT: str = "You are a helpful and concise AI assistant."
 
-    model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"),
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 
     def get_cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
     def get_key_pool(self) -> List[Dict[str, str]]:
         """
-        Parses LLM_API_KEYS into an ordered key pool.
-        Supports format:
-          1. key_1:model:secret,key_2:model:secret
-          2. secret_1,secret_2 (auto-maps to key_1, key_2 with DEFAULT_MODEL)
-          3. key_1:secret_1,key_2:secret_2
+        Reads LLM_API_KEYS (comma separated) into an ordered list of keys.
+        Each entry can be written three ways:
+          key_1:groq/llama3:sk-abc   -> id, model and secret
+          key_1:sk-abc               -> id and secret (uses DEFAULT_MODEL)
+          sk-abc                     -> secret only (id becomes key_1, key_2, ...)
         """
-        raw_keys = [k.strip() for k in self.LLM_API_KEYS.split(",") if k.strip()]
-        key_pool = []
-        for idx, entry in enumerate(raw_keys, start=1):
-            parts = entry.split(":")
-            if len(parts) >= 3:
-                key_id = parts[0].strip()
-                model = parts[1].strip()
-                api_key = ":".join(parts[2:]).strip()
+        pool = []
+        entries = [e.strip() for e in self.LLM_API_KEYS.split(",") if e.strip()]
+        for position, entry in enumerate(entries, start=1):
+            parts = entry.split(":", 2)  # at most 3 parts, so a secret containing ":" stays whole
+            if len(parts) == 3:
+                key_id, model, api_key = parts
             elif len(parts) == 2:
-                key_id = parts[0].strip()
+                key_id, api_key = parts
                 model = self.DEFAULT_MODEL
-                api_key = parts[1].strip()
             else:
-                key_id = f"key_{idx}"
-                model = self.DEFAULT_MODEL
-                api_key = entry.strip()
+                key_id, model, api_key = f"key_{position}", self.DEFAULT_MODEL, entry
+            pool.append({"key_id": key_id.strip(), "model": model.strip(), "api_key": api_key.strip()})
+        return pool
 
-            key_pool.append({
-                "key_id": key_id,
-                "model": model,
-                "api_key": api_key
-            })
-        return key_pool
 
 settings = Settings()

@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 
 interface CodeBlockProps {
   language: string;
@@ -15,9 +16,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
     setTimeout(() => setCopied(false), 1600);
   };
 
-  const lines = useMemo(() => code.split('\n'), [code]);
+  const lines = code.split('\n');
 
-  // Fast, deterministic token highlighter for developer elegance
+  // Very small syntax highlighter: colors strings, numbers and common keywords. Comments are greyed out.
   const highlightLine = (line: string): React.ReactNode => {
     if (!line) return <span>&nbsp;</span>;
 
@@ -97,22 +98,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
             }`}
             aria-label={copied ? 'Copied code to clipboard' : 'Copy code to clipboard'}
           >
-            {copied ? (
-              <>
-                <svg className="w-3.5 h-3.5 text-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span>copied</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-                <span>copy</span>
-              </>
-            )}
+            {copied ? <Check className="w-3.5 h-3.5 text-ok" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copied ? 'copied' : 'copy'}</span>
           </button>
         </div>
       </div>

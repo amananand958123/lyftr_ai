@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { ArrowUp } from 'lucide-react';
 import { LatencySparkline } from './LatencySparkline';
 import { exportSessionMarkdown, exportSessionJSON } from '../utils/export';
 import { ChatMessage } from '../types';
@@ -83,19 +84,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             title="Send Message (Enter)"
             aria-label="Send message"
           >
-            <svg
-              aria-hidden="true"
-              className="w-4 h-4 translate-y-[-0.5px]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="12" y1="19" x2="12" y2="5" />
-              <polyline points="5 12 12 5 19 12" />
-            </svg>
+            <ArrowUp aria-hidden="true" className="w-4 h-4" strokeWidth={2.5} />
           </button>
         </div>
       </form>

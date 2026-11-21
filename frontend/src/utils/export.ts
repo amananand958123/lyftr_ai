@@ -1,29 +1,35 @@
 import { ChatMessage } from '../types';
 
-export function exportSessionMarkdown(sessionId: string, messages: ChatMessage[]): void {
-  let md = `# Conversation Transcript — Session: ${sessionId}\n\n`;
-  md += `*Exported on ${new Date().toISOString()} via Lyftr AI Resilient Gateway*\n\n---\n\n`;
+// Rough blended price of ~$0.15 per million tokens, used only for the "est: $" labels.
+export const COST_PER_TOKEN = 0.00000015;
 
-  messages.forEach((msg) => {
-    const roleTitle = msg.role === 'user' ? 'User' : 'Assistant (Lyftr Gateway)';
-    md += `### ${roleTitle}\n\n`;
-    md += `${msg.content}\n\n`;
-    if (msg.metadata) {
-      md += `> **Telemetry**: Source: \`${msg.metadata.resolution_source}\` | Model: \`${msg.metadata.model}\` | Latency: \`${msg.metadata.latency_ms}ms\` | In: \`${msg.metadata.input_tokens}\` | Out: \`${msg.metadata.output_tokens}\` | Key: \`${msg.metadata.key_id || 'cache'}\`\n\n`;
-    }
-    md += `---\n\n`;
-  });
-
-  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `session-${sessionId}.md`;
-  a.click();
+// Makes the browser download a text file.
+function downloadFile(fileName: string, content: string, mimeType: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
   URL.revokeObjectURL(url);
 }
 
-export function exportSessionJSON(sessionId: string, messages: ChatMessage[]): void {
+export function exportSessionMarkdown(sessionId: string, messages: ChatMessage[]) {
+  let md = `# Conversation Transcript — Session: ${sessionId}\n\n`;
+  md += `*Exported on ${new Date().toISOString()}*\n\n---\n\n`;
+
+  for (const msg of messages) {
+    md += `### ${msg.role === 'user' ? 'User' : 'Assistant'}\n\n${msg.content}\n\n`;
+    if (msg.metadata) {
+      const m = msg.metadata;
+      md += `> Source: ${m.resolution_source} | Model: ${m.model} | Latency: ${m.latency_ms}ms | In: ${m.input_tokens} | Out: ${m.output_tokens} | Key: ${m.key_id || 'cache'}\n\n`;
+    }
+    md += `---\n\n`;
+  }
+
+  downloadFile(`session-${sessionId}.md`, md, 'text/markdown');
+}
+
+export function exportSessionJSON(sessionId: string, messages: ChatMessage[]) {
   const data = {
     session_id: sessionId,
     exported_at: new Date().toISOString(),
@@ -34,12 +40,5 @@ export function exportSessionJSON(sessionId: string, messages: ChatMessage[]): v
       isError: m.isError || false,
     })),
   };
-
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `session-${sessionId}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(`session-${sessionId}.json`, JSON.stringify(data, null, 2), 'application/json');
 }

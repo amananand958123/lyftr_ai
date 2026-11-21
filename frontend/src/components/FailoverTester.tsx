@@ -5,72 +5,43 @@ interface FailoverTesterProps {
   onSelectRule: (rule: string) => void;
 }
 
+// Each step in the routing diagram: what to show and whether it is a success or a failure.
+type Step = { text: string; failed?: boolean };
+
+// The 4 buttons. `pipeline` is the path a request takes when that rule is active.
+const OPTIONS: Array<{ label: string; value: string; desc: string; pipeline: Step[] }> = [
+  {
+    label: 'Normal (Direct)',
+    value: '',
+    desc: 'Direct execution on primary key_1',
+    pipeline: [{ text: 'key_1: Groq' }, { text: '200 OK' }],
+  },
+  {
+    label: 'key_1=429',
+    value: 'key_1=429',
+    desc: 'Simulate rate limit on primary -> fallback to key_2',
+    pipeline: [{ text: 'key_1 (429 RateLimit)', failed: true }, { text: 'key_2: Gemini' }, { text: '200 OK' }],
+  },
+  {
+    label: 'key_1=500',
+    value: 'key_1=500',
+    desc: 'Simulate 500 error on primary -> fallback to key_2',
+    pipeline: [{ text: 'key_1 (500 Error)', failed: true }, { text: 'key_2: Gemini' }, { text: '200 OK' }],
+  },
+  {
+    label: '*=429',
+    value: '*=429',
+    desc: 'Exhaust all keys -> clean HTTP 503 response',
+    pipeline: [
+      { text: 'key_1 (429)', failed: true },
+      { text: 'key_2 (429)', failed: true },
+      { text: '503 Service Unavailable', failed: true },
+    ],
+  },
+];
+
 export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onSelectRule }) => {
-  const options = [
-    { label: 'Normal (Direct)', value: '', desc: 'Direct execution on primary key_1' },
-    { label: 'key_1=429', value: 'key_1=429', desc: 'Simulate rate limit on primary -> fallback to key_2' },
-    { label: 'key_1=500', value: 'key_1=500', desc: 'Simulate 500 error on primary -> fallback to key_2' },
-    { label: '*=429', value: '*=429', desc: 'Exhaust all keys -> clean HTTP 503 response' },
-  ];
-
-  // Visual trace representation
-  const renderRoutingPipeline = () => {
-    if (!currentRule) {
-      return (
-        <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink-muted">
-          <span className="text-ink">Client</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-ok font-semibold">key_1: Groq</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-ok font-medium">200 OK</span>
-        </div>
-      );
-    }
-
-    if (currentRule === 'key_1=429') {
-      return (
-        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
-          <span className="text-ink">Client</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-bad line-through decoration-bad font-semibold">key_1 (429 RateLimit)</span>
-          <span className="text-accent font-bold">➔ [failover] ➔</span>
-          <span className="text-ok font-semibold">key_2: Gemini</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-ok font-medium">200 OK</span>
-        </div>
-      );
-    }
-
-    if (currentRule === 'key_1=500') {
-      return (
-        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
-          <span className="text-ink">Client</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-bad line-through decoration-bad font-semibold">key_1 (500 Error)</span>
-          <span className="text-accent font-bold">➔ [failover] ➔</span>
-          <span className="text-ok font-semibold">key_2: Gemini</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-ok font-medium">200 OK</span>
-        </div>
-      );
-    }
-
-    if (currentRule === '*=429') {
-      return (
-        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
-          <span className="text-ink">Client</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-bad line-through decoration-bad font-semibold">key_1 (429)</span>
-          <span className="text-ink-subtle">➔</span>
-          <span className="text-bad line-through decoration-bad font-semibold">key_2 (429)</span>
-          <span className="text-bad font-bold">➔</span>
-          <span className="text-bad font-semibold bg-bad-soft px-1 rounded">503 Service Unavailable</span>
-        </div>
-      );
-    }
-
-    return null;
-  };
+  const pipeline = OPTIONS.find((opt) => opt.value === currentRule)?.pipeline ?? [];
 
   return (
     <div className="bg-paper-2/60 border border-rule-subtle rounded-[12px] p-2.5 transition-colors">
@@ -92,7 +63,7 @@ export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onS
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
-        {options.map((opt) => {
+        {OPTIONS.map((opt) => {
           const isActive = currentRule === opt.value;
           return (
             <button
@@ -120,7 +91,17 @@ export const FailoverTester: React.FC<FailoverTesterProps> = ({ currentRule, onS
       {/* Visual routing trace */}
       <div className="px-2 py-1.5 rounded-[6px] bg-paper-3/60 border border-rule-subtle/60 flex items-center justify-between">
         <span className="text-[10px] font-mono text-ink-subtle uppercase">Routing Pipeline:</span>
-        {renderRoutingPipeline()}
+        <div className="flex items-center gap-1.5 text-[10px] font-mono flex-wrap">
+          <span className="text-ink">Client</span>
+          {pipeline.map((step) => (
+            <React.Fragment key={step.text}>
+              <span className="text-ink-subtle">➔</span>
+              <span className={step.failed ? 'text-bad line-through decoration-bad font-semibold' : 'text-ok font-semibold'}>
+                {step.text}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
       </div>
     </div>
   );

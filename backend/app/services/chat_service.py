@@ -1,85 +1,62 @@
+"""The /chat flow: load history -> ask the gateway -> save the turn -> return the reply."""
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Optional
+
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+
 from app.config import settings
-from app.repositories.message_repository import message_repo
-from app.gateway import complete_chat, AllProvidersUnavailableException
-from app.schemas import ChatResponse, ChatMetadata
+from app.gateway import complete_chat
+from app.repositories import message_repository
+from app.schemas import ChatMetadata, ChatResponse
 
-class ChatService:
-    @staticmethod
-    def process_chat(
-        db: Session,
-        session_id: str,
-        message: str,
-        system_prompt: Optional[str] = None,
-        simulate_header: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
-    ) -> ChatResponse:
-        effective_system_prompt = system_prompt or settings.DEFAULT_SYSTEM_PROMPT
 
-        # 1. Fetch conversation history from repository
-        history = message_repo.get_history(db, session_id)
+def process_chat(
+    db: Session,
+    session_id: str,
+    message: str,
+    system_prompt: Optional[str] = None,
+    simulate_header: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> ChatResponse:
+    # 1. Build the full conversation: system prompt + past messages + the new message.
+    #    (The cache key is this whole list, so the same conversation gives a cache hit.)
+    conversation = [{"role": "system", "content": system_prompt or settings.DEFAULT_SYSTEM_PROMPT}]
+    for past in message_repository.get_history(db, session_id):
+        conversation.append({"role": past.role, "content": past.content})
+    conversation.append({"role": "user", "content": message})
 
-        # 2. Build full message array for LiteLLM
-        # Cache key invariant: model + full message list (system + history + new_message)
-        llm_messages: List[Dict[str, str]] = [{"role": "system", "content": effective_system_prompt}]
-        for msg in history:
-            llm_messages.append({"role": msg.role, "content": msg.content})
-        llm_messages.append({"role": "user", "content": message})
+    # 2. Ask the gateway. If every key fails, return 503 and save nothing.
+    try:
+        result = complete_chat(conversation, simulate_header, temperature, max_tokens)
+    except Exception:
+        raise HTTPException(status_code=503, detail="all providers unavailable")
 
-        # 3. Complete chat via LiteLLM gateway
-        try:
-            result = complete_chat(
-                messages=llm_messages,
-                simulate_header=simulate_header,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-        except AllProvidersUnavailableException:
-            # Crucial rule: 503 errors must NOT be recorded to SQLite session history
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="all providers unavailable"
-            )
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="all providers unavailable"
-            )
-
-        # 4. Save both messages to repository
-        now_iso = datetime.now(timezone.utc).isoformat()
-        assistant_meta = {
+    # 3. Only successful turns are saved to the database.
+    message_repository.save_turn(
+        db,
+        session_id=session_id,
+        user_text=message,
+        reply=result.reply,
+        reply_metadata={
             "resolution_source": result.resolution_source,
             "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens
-        }
+            "output_tokens": result.output_tokens,
+        },
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
 
-        message_repo.save_messages(
-            db=db,
-            session_id=session_id,
-            user_content=message,
-            assistant_content=result.reply,
-            assistant_metadata=assistant_meta,
-            created_at=now_iso
-        )
-
-        # 5. Return schema-compliant ChatResponse
-        return ChatResponse(
-            session_id=session_id,
-            reply=result.reply,
-            metadata=ChatMetadata(
-                resolution_source=result.resolution_source,
-                model=result.model,
-                latency_ms=result.latency_ms,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-                key_id=result.key_id,
-                fallback_attempts=result.fallback_attempts
-            )
-        )
-
-chat_service = ChatService()
+    return ChatResponse(
+        session_id=session_id,
+        reply=result.reply,
+        metadata=ChatMetadata(
+            resolution_source=result.resolution_source,
+            model=result.model,
+            latency_ms=result.latency_ms,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            key_id=result.key_id,
+            fallback_attempts=result.fallback_attempts,
+        ),
+    )

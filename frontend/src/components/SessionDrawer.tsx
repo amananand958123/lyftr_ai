@@ -48,16 +48,20 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
     setEditTitleInput(currentTitle || id);
   };
 
+  // Custom titles only live in this browser's localStorage (the backend doesn't know about them).
+  const saveTitles = (titles: Record<string, string>) => {
+    setSessionTitles(titles);
+    try {
+      localStorage.setItem('lyftr_session_titles', JSON.stringify(titles));
+    } catch {
+      // storage can be blocked (private mode); the rename still works until reload
+    }
+  };
+
   const handleSaveRename = (e: React.FormEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    const updated = { ...sessionTitles, [id]: editTitleInput.trim() || id };
-    setSessionTitles(updated);
-    try {
-      localStorage.setItem('lyftr_session_titles', JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to persist session title:', err);
-    }
+    saveTitles({ ...sessionTitles, [id]: editTitleInput.trim() || id });
     setEditingSessionId(null);
   };
 
@@ -66,10 +70,9 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
     try {
       await deleteSession(id);
       setSessions((prev) => prev.filter((s) => s.session_id !== id));
-      const updated = { ...sessionTitles };
-      delete updated[id];
-      setSessionTitles(updated);
-      localStorage.setItem('lyftr_session_titles', JSON.stringify(updated));
+      const remainingTitles = { ...sessionTitles };
+      delete remainingTitles[id];
+      saveTitles(remainingTitles);
     } catch (err) {
       console.error('Failed to delete session:', err);
     }
@@ -150,7 +153,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
                     onSelectSession(s.session_id);
                     onClose();
                   }}
-                  className={`p-2.5 rounded-[10px] border cursor-pointer transition-[background-color,border-color] duration-150 flex items-start justify-between gap-2 ${
+                  className={`group p-2.5 rounded-[10px] border cursor-pointer transition-[background-color,border-color] duration-150 flex items-start justify-between gap-2 ${
                     isActive
                       ? 'bg-paper-3 border-rule-2 text-ink shadow-sm'
                       : 'bg-paper-3/40 border-rule-subtle hover:border-rule text-ink-muted hover:text-ink'

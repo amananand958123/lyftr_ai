@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Search } from 'lucide-react';
 
 export interface CommandItem {
   id: string;
@@ -75,18 +76,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {/* Palette Modal */}
       <div className="relative w-full max-w-lg bg-paper-2 border border-rule rounded-[16px] shadow-2xl overflow-hidden z-10 animate-apple-entrance">
         <div className="flex items-center px-4 py-3 border-b border-rule-subtle gap-2.5">
-          <svg
-            className="w-4 h-4 text-ink-subtle"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+          <Search className="w-4 h-4 text-ink-subtle" />
 
           <input
             ref={inputRef}

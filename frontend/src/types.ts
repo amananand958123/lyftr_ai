@@ -43,6 +43,15 @@ export interface SessionListResponse {
   sessions: SessionSummary[];
 }
 
+export interface HistoryResponse {
+  session_id: string;
+  messages: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    metadata?: Pick<ChatMetadata, 'resolution_source' | 'input_tokens' | 'output_tokens'>;
+  }>;
+}
+
 export interface CacheStatsResponse {
   cache_enabled: boolean;
   cache_type: string;

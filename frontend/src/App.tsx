@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { HealthStatus } from './types';
 import { fetchHealth, clearCache } from './api';
 import { useTheme } from './hooks/useTheme';
@@ -13,6 +13,8 @@ import { SessionDrawer } from './components/SessionDrawer';
 import { TelemetryHUD } from './components/TelemetryHUD';
 import { CommandPalette, CommandItem } from './components/CommandPalette';
 import { exportSessionMarkdown, exportSessionJSON } from './utils/export';
+
+const STARTER_PROMPTS = ['What is the capital of France?', 'Write a Python binary search function.'];
 
 export function App() {
   const { isDark, toggleTheme } = useTheme();
@@ -49,85 +51,56 @@ export function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Real-time Heartbeat Polling (US-011)
+  // Ask the backend for /health now and then every 30 seconds. null = backend not reachable.
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let isMounted = true;
-
-    const checkHealth = () => {
-      fetchHealth()
-        .then((h) => {
-          if (!isMounted) return;
-          setHealth(h);
-          timeoutId = setTimeout(checkHealth, 30000);
-        })
-        .catch(() => {
-          if (!isMounted) return;
-          timeoutId = setTimeout(checkHealth, 10000);
-        });
-    };
-
+    const checkHealth = () => fetchHealth().then(setHealth).catch(() => setHealth(null));
     checkHealth();
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-    };
+    const intervalId = setInterval(checkHealth, 30000);
+    return () => clearInterval(intervalId);
   }, []);
 
-  // Global Keyboard Shortcuts (Cmd+K, Cmd+T, Cmd+N, Cmd+D, etc.)
+  // Keyboard shortcuts: Cmd/Ctrl + a letter runs an action, Escape closes any open panel.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      if (!isCmdOrCtrl) return;
+    const shortcuts: Record<string, () => void> = {
+      k: () => setShowCommandPalette((open) => !open),
+      t: () => setShowTelemetryHUD((open) => !open),
+      s: () => setShowSessionDrawer(true),
+      n: handleNewSession,
+      d: toggleTheme,
+      e: () => exportSessionMarkdown(sessionId, messages),
+      j: () => exportSessionJSON(sessionId, messages),
+    };
 
-      if (e.key === 'k') {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowTelemetryHUD(false);
+        setShowSessionDrawer(false);
+        return;
+      }
+      const action = shortcuts[e.key];
+      if ((e.metaKey || e.ctrlKey) && action) {
         e.preventDefault();
-        setShowCommandPalette((prev) => !prev);
-      } else if (e.key === 't') {
-        e.preventDefault();
-        setShowTelemetryHUD((prev) => !prev);
-      } else if (e.key === 'n') {
-        e.preventDefault();
-        handleNewSession();
-      } else if (e.key === 'd') {
-        e.preventDefault();
-        toggleTheme();
-      } else if (e.key === 'e') {
-        e.preventDefault();
-        exportSessionMarkdown(sessionId, messages);
-      } else if (e.key === 'j') {
-        e.preventDefault();
-        exportSessionJSON(sessionId, messages);
+        action();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sessionId, messages, handleNewSession, toggleTheme]);
 
-  const handleSend = (e?: React.FormEvent, customPrompt?: string) => {
-    if (e) e.preventDefault();
-    const text = customPrompt !== undefined ? customPrompt : inputText.trim();
+  const sendOptions = { systemPrompt, simulateRule, temperature, maxTokens };
+
+  // Sends the typed text, or `presetText` when a starter prompt button is clicked.
+  const handleSend = (e?: React.FormEvent, presetText?: string) => {
+    e?.preventDefault();
+    const text = presetText ?? inputText.trim();
     if (!text) return;
-    if (customPrompt === undefined) setInputText('');
-
-    sendMessage(text, {
-      systemPrompt,
-      simulateRule,
-      temperature,
-      maxTokens,
-    });
+    if (presetText === undefined) setInputText('');
+    sendMessage(text, sendOptions);
   };
 
-  const handleRegenerate = () => {
-    regenerateLast({
-      systemPrompt,
-      simulateRule,
-      temperature,
-      maxTokens,
-    });
-  };
+  const handleRegenerate = () => regenerateLast(sendOptions);
 
-  const commandList: CommandItem[] = useMemo(() => [
+  const commandList: CommandItem[] = [
     { id: 'view-telemetry', title: 'Open Gateway Telemetry & Cache HUD', category: 'Gateway', shortcut: '⌘T', action: () => setShowTelemetryHUD(true) },
     { id: 'new-sess', title: 'Start New Session', category: 'Session', shortcut: '⌘N', action: handleNewSession },
     { id: 'view-sess', title: 'Open Stored Sessions', category: 'Session', shortcut: '⌘S', action: () => setShowSessionDrawer(true) },
@@ -141,7 +114,7 @@ export function App() {
     { id: 'sim-500', title: 'Failover: Simulate Internal Error (key_1=500)', category: 'Failover', action: () => setSimulateRule('key_1=500') },
     { id: 'sim-all', title: 'Failover: Simulate Total Outage (*=429)', category: 'Failover', action: () => setSimulateRule('*=429') },
     { id: 'clear-cache', title: 'Purge Gateway Cache', category: 'Cache', action: () => clearCache() },
-  ], [sessionId, messages, isDark, handleNewSession, toggleTheme]);
+  ];
 
   return (
     <div className="flex flex-col h-screen max-w-4xl mx-auto px-4 py-3 sm:py-6 text-ink">
@@ -220,20 +193,16 @@ export function App() {
             </p>
 
             <div className="grid grid-cols-1 gap-2 w-full text-xs font-mono">
-              <button
-                type="button"
-                onClick={() => handleSend(undefined, "What is the capital of France?")}
-                className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
-              >
-                What is the capital of France?
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSend(undefined, "Write a Python binary search function.")}
-                className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
-              >
-                Write a Python binary search function.
-              </button>
+              {STARTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => handleSend(undefined, prompt)}
+                  className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           </div>
         ) : (

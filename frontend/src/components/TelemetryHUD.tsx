@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HealthStatus, CacheStatsResponse, ChatMessage } from '../types';
 import { fetchCacheStats, clearCache } from '../api';
+import { COST_PER_TOKEN } from '../utils/export';
 
 interface TelemetryHUDProps {
   isOpen: boolean;
@@ -31,31 +32,18 @@ export const TelemetryHUD: React.FC<TelemetryHUDProps> = ({
 
   if (!isOpen) return null;
 
-  // Calculate live session cache metrics
-  const assistantMessages = messages.filter((m) => m.role === 'assistant' && m.metadata);
-  const totalCalls = assistantMessages.length;
-  const cacheHits = assistantMessages.filter((m) => m.metadata?.resolution_source === 'LLM_CACHE').length;
-  const liveInferences = totalCalls - cacheHits;
+  // Split this session's replies into cache hits and live calls.
+  const replies = messages.filter((m) => m.metadata);
+  const cacheReplies = replies.filter((m) => m.metadata!.resolution_source === 'LLM_CACHE');
+  const liveReplies = replies.filter((m) => m.metadata!.resolution_source === 'LIVE_INFERENCE');
+
+  const totalCalls = replies.length;
+  const cacheHits = cacheReplies.length;
+  const liveInferences = liveReplies.length;
   const cacheHitRatio = totalCalls > 0 ? Math.round((cacheHits / totalCalls) * 100) : 0;
-
-  // Latency metrics
-  const avgCacheLatency = cacheHits > 0
-    ? Math.round(
-        assistantMessages
-          .filter((m) => m.metadata?.resolution_source === 'LLM_CACHE')
-          .reduce((acc, m) => acc + (m.metadata?.latency_ms || 0), 0) / cacheHits
-      )
-    : 0;
-
-  const avgLiveLatency = liveInferences > 0
-    ? Math.round(
-        assistantMessages
-          .filter((m) => m.metadata?.resolution_source === 'LIVE_INFERENCE')
-          .reduce((acc, m) => acc + (m.metadata?.latency_ms || 0), 0) / liveInferences
-      )
-    : 0;
-
-  const estimatedCost = (cumulativeTokens * 0.00000015).toFixed(6);
+  const avgCacheLatency = averageLatency(cacheReplies);
+  const avgLiveLatency = averageLatency(liveReplies);
+  const estimatedCost = (cumulativeTokens * COST_PER_TOKEN).toFixed(6);
 
   const handlePurgeCache = async () => {
     setIsPurging(true);
@@ -115,8 +103,8 @@ export const TelemetryHUD: React.FC<TelemetryHUDProps> = ({
 
             <div className="p-3 bg-paper-3/60 rounded-[10px] border border-rule-subtle">
               <div className="text-[10px] uppercase font-mono text-ink-subtle mb-1">Active Keys</div>
-              <div className="text-xl font-bold font-mono text-ok">{health?.keys_configured || 2}</div>
-              <div className="text-[10px] text-ink-muted mt-0.5">Health: 200 OK</div>
+              <div className="text-xl font-bold font-mono text-ok">{health ? health.keys_configured : '–'}</div>
+              <div className="text-[10px] text-ink-muted mt-0.5">{health ? 'Health: 200 OK' : 'backend unreachable'}</div>
             </div>
           </div>
 
@@ -152,23 +140,16 @@ export const TelemetryHUD: React.FC<TelemetryHUDProps> = ({
           <div className="space-y-1.5">
             <div className="text-[11px] font-mono text-ink-muted font-medium">Configured Key Pool & Models</div>
             <div className="space-y-1">
-              <div className="p-2.5 bg-paper-3/50 rounded-[8px] border border-rule-subtle flex items-center justify-between font-mono text-[11px]">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-ok" />
-                  <span className="font-semibold text-ink">key_1</span>
-                  <span className="text-ink-subtle">(Primary)</span>
+              {(cacheStats?.supported_models ?? []).map((model, index) => (
+                <div key={index} className="p-2.5 bg-paper-3/50 rounded-[8px] border border-rule-subtle flex items-center justify-between font-mono text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-ok" />
+                    <span className="font-semibold text-ink">key_{index + 1}</span>
+                    <span className="text-ink-subtle">{index === 0 ? '(Primary)' : '(Fallback)'}</span>
+                  </div>
+                  <div className="text-ink-muted">{model}</div>
                 </div>
-                <div className="text-ink-muted">groq/openai/gpt-oss-20b</div>
-              </div>
-
-              <div className="p-2.5 bg-paper-3/50 rounded-[8px] border border-rule-subtle flex items-center justify-between font-mono text-[11px]">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-ok" />
-                  <span className="font-semibold text-ink">key_2</span>
-                  <span className="text-ink-subtle">(Secondary Fallback)</span>
-                </div>
-                <div className="text-ink-muted">gemini/gemini-2.5-flash-lite</div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -195,3 +176,9 @@ export const TelemetryHUD: React.FC<TelemetryHUDProps> = ({
     </div>
   );
 };
+
+function averageLatency(replies: ChatMessage[]): number {
+  if (replies.length === 0) return 0;
+  const total = replies.reduce((sum, m) => sum + (m.metadata!.latency_ms || 0), 0);
+  return Math.round(total / replies.length);
+}
