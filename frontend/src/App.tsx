@@ -71,13 +71,16 @@ export function App() {
   }, [messages, isLoading]);
 
   // Poll /health every 30s, pausing when tab is hidden to save Render resources (Item 41)
-  // Wakes up on visibilitychange, retries faster (3s) on initial failure or cold-start
+  // Wakes up immediately on visibilitychange, retries quickly (2s) on failure or cold-start
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let isCancelled = false;
 
     const check = async () => {
-      if (document.hidden) return;
+      if (document.hidden) {
+        timer = setTimeout(check, 5000);
+        return;
+      }
       try {
         const data = await fetchHealth();
         if (!isCancelled) {
@@ -86,17 +89,18 @@ export function App() {
         }
       } catch (err) {
         if (!isCancelled) {
-          console.warn('[Lyftr] Health check failed, retrying in 3s:', err);
+          console.warn('[Lyftr] Health check failed, retrying in 2s:', err);
           setHealth(null);
-          timer = setTimeout(check, 3000);
+          timer = setTimeout(check, 2000);
         }
       }
     };
 
+    // Execute immediately on mount
     check();
 
     const onVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && !isCancelled) {
         if (timer) clearTimeout(timer);
         check();
       }

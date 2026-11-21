@@ -29,6 +29,7 @@ backend/.venv/
 *.db
 *.sqlite3
 /data/
+backend/data/
 
 # Node
 node_modules/

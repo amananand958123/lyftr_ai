@@ -57,7 +57,8 @@ async function errorFrom(res: Response) {
 // Small fetch wrapper: returns the JSON body, or throws when the response is not 2xx.
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (!headers.has('X-Client-ID')) {
+  // Only attach X-Client-ID for session-scoped endpoints, never for public health checks
+  if (!path.startsWith('/health') && !headers.has('X-Client-ID')) {
     headers.set('X-Client-ID', getClientId());
   }
   const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
@@ -65,9 +66,46 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function fetchHealth() {
-  // Timestamp in the URL guarantees cache-busting without triggering browser cache-mode restrictions
-  return request<HealthStatus>(`/health?_t=${Date.now()}`);
+export async function fetchHealth(): Promise<HealthStatus> {
+  const path = `/health?_t=${Date.now()}`;
+
+  // 1. Try configured API_BASE_URL (direct backend or custom env)
+  if (API_BASE_URL) {
+    try {
+      const res = await fetch(`${API_BASE_URL}${path}`);
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('[Lyftr] fetchHealth via API_BASE_URL failed:', err);
+    }
+  }
+
+  // 2. Try relative path (proxied by Vite in dev/preview or by Vercel in production)
+  try {
+    const res = await fetch(path);
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn('[Lyftr] fetchHealth via relative proxy failed:', err);
+  }
+
+  // 3. Fallback to direct local backend (only on http: origins to avoid mixed content errors in browser)
+  if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
+    try {
+      const res = await fetch(`http://localhost:8000${path}`);
+      if (res.ok) return await res.json();
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. Fallback to direct production Render deployment
+  try {
+    const res = await fetch(`https://lyftr-ai-backend.onrender.com${path}`);
+    if (res.ok) return await res.json();
+  } catch {
+    // ignore
+  }
+
+  throw new Error('All health check endpoints unreachable');
 }
 
 export function fetchSessions(limit = 50, offset = 0) {
