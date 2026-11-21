@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
+import uuid
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.database import init_db
-from app.routes import health, chat, sessions
+from app.routes import health, chat, sessions, cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,6 +21,27 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Correlation & Request ID Middleware (US-013)
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
+
+app.add_middleware(RequestIDMiddleware)
+
+# Security Headers Middleware (US-014)
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS Middleware
 origins = settings.get_cors_origins()
@@ -38,8 +61,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": jsonable_encoder(exc.errors())}
     )
 
-# Include exact routers
+# Include routers
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(sessions.router)
-
+app.include_router(cache.router)

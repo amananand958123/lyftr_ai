@@ -61,7 +61,9 @@ def parse_simulate_failure_header(header: Optional[str]) -> Dict[str, int]:
 
 def complete_chat(
     messages: List[Dict[str, str]],
-    simulate_header: Optional[str] = None
+    simulate_header: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None
 ) -> GatewayResult:
     """
     Executes a chat completion through LiteLLM with response caching and key failover.
@@ -101,6 +103,10 @@ def complete_chat(
                 "messages": messages,
                 "caching": use_caching,
             }
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
             # Only pass api_key if not a dummy/mock placeholder
             if api_key and not api_key.startswith("placeholder") and not api_key.startswith("YOUR_"):
                 kwargs["api_key"] = api_key

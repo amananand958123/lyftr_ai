@@ -1,0 +1,307 @@
+{
+  "project": "Lyftr AI Resilient Intelligence Gateway",
+  "branchName": "ralph/20-iteration-master-refinement",
+  "description": "Comprehensive 21-iteration architectural, reliability, telemetry, and UX refinement backlog for the Lyftr AI full-stack resilient LLM gateway.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add Session Listing API (GET /sessions)",
+      "description": "As an API consumer, I want to list all stored conversation sessions with message counts and last active timestamps so that the frontend can display conversation history.",
+      "acceptanceCriteria": [
+        "Endpoint GET /sessions supports limit and offset query parameters",
+        "Returns list of sessions with session_id, message_count, and last_active_at",
+        "Includes automated test in backend/tests/test_sessions.py",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented in backend/app/routes/sessions.py and verified via test_list_and_delete_sessions"
+    },
+    {
+      "id": "US-002",
+      "title": "Add Session Deletion API (DELETE /sessions/{session_id})",
+      "description": "As a user, I want to delete a conversation session and all its messages from SQLite so that I can clean up my history.",
+      "acceptanceCriteria": [
+        "Endpoint DELETE /sessions/{session_id} deletes all messages for the session from SQLite",
+        "Returns 404 if session does not exist",
+        "Returns 200 with deleted: true and messages_deleted count",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented in backend/app/routes/sessions.py and verified via test_list_and_delete_sessions"
+    },
+    {
+      "id": "US-003",
+      "title": "Add Gateway Cache Stats and Invalidation Endpoints",
+      "description": "As a developer, I want to view cache statistics and clear cache on demand so that I can verify caching efficiency and test edge cases.",
+      "acceptanceCriteria": [
+        "Endpoint GET /cache/stats returns cache_type, enabled status, and estimated entry count",
+        "Endpoint POST /cache/clear purges local cache entries",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented in backend/app/routes/cache.py and verified in test_extensions.py"
+    },
+    {
+      "id": "US-004",
+      "title": "Add Markdown Code Syntax Highlighting and Copy Button in Frontend",
+      "description": "As a user, I want formatted code blocks with syntax highlighting and a one-click copy button so that code responses are readable and usable.",
+      "acceptanceCriteria": [
+        "Code blocks inside ``` are rendered with distinct styling and syntax highlighting",
+        "Each code block has an Apple-style Copy button providing instant visual feedback",
+        "Preserves data-testid=\"assistant-message\" attribute",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Implemented in CodeBlock.tsx and MessageItem.tsx"
+    },
+    {
+      "id": "US-005",
+      "title": "Add Slide-Out Session History Drawer in Frontend",
+      "description": "As a user, I want a slide-out drawer to view and switch between previous sessions so that I do not lose context across sessions.",
+      "acceptanceCriteria": [
+        "Drawer lists sessions fetched from GET /sessions with message count and preview",
+        "Clicking a session loads its messages and updates active sessionId",
+        "Includes a delete button for each session calling DELETE /sessions/{session_id}",
+        "Smooth Apple-style ease transition with backdrop blur",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Implemented in SessionDrawer.tsx and wired to App.tsx"
+    },
+    {
+      "id": "US-006",
+      "title": "Add Optional Temperature and Max Tokens Tuning in Gateway",
+      "description": "As an evaluator, I want to adjust temperature and max_tokens per request so that I can test deterministic vs creative responses.",
+      "acceptanceCriteria": [
+        "ChatRequest schema accepts optional temperature (float 0.0-2.0) and max_tokens (int > 0)",
+        "Gateway passes temperature and max_tokens to LiteLLM completion calls",
+        "Default values are preserved when omitted",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Supported in ChatRequest schema, gateway.py, and routes/chat.py; tested in test_chat_with_temperature_and_max_tokens"
+    },
+    {
+      "id": "US-007",
+      "title": "Add Tuning Controls Drawer in Frontend",
+      "description": "As a user, I want sliders for temperature and max tokens in the settings drawer so that I can fine-tune completion behavior.",
+      "acceptanceCriteria": [
+        "Sliders for temperature (0.0 to 1.0) and max tokens (256 to 4096)",
+        "Values are included in payload when calling POST /chat",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Implemented in TuningDrawer.tsx and linked in App.tsx"
+    },
+    {
+      "id": "US-008",
+      "title": "Add System Prompt Presets Selector",
+      "description": "As a user, I want quick-select presets for common system prompts so that I do not have to type custom prompts repeatedly.",
+      "acceptanceCriteria": [
+        "Presets include: Concise Explainer, Senior Code Reviewer, Root Cause Debugger, LaTeX Specialist",
+        "Selecting a preset automatically populates system-prompt-input",
+        "data-testid=\"system-prompt-input\" remains fully functional and verified",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Implemented in PromptPresets.tsx"
+    },
+    {
+      "id": "US-009",
+      "title": "Add Cumulative Token and Cost Estimation HUD",
+      "description": "As a developer, I want to see cumulative session tokens and estimated dollar cost so that I can audit API budget usage.",
+      "acceptanceCriteria": [
+        "Calculates cumulative prompt and completion tokens for the active session",
+        "Estimates USD cost based on known model rates",
+        "Displays cleanly in the telemetry bar without cluttering primary metrics",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Implemented in MetadataBadge.tsx and tracked in App.tsx"
+    },
+    {
+      "id": "US-010",
+      "title": "Add Markdown and JSON Transcript Export",
+      "description": "As a user, I want to download my conversation history as Markdown or JSON so that I can archive or share it.",
+      "acceptanceCriteria": [
+        "Export button triggers browser download of session-id.md and session-id.json",
+        "Markdown export formats messages chronologically with role headers and metadata",
+        "JSON export contains structured session data matching API format",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Implemented in export.ts and wired to footer actions"
+    },
+    {
+      "id": "US-011",
+      "title": "Add Real-Time Heartbeat Health Polling",
+      "description": "As a user, I want the frontend to automatically monitor gateway health every 30 seconds so that connection drops are visually detected.",
+      "acceptanceCriteria": [
+        "Periodic background polling of GET /health every 30s",
+        "Status indicator transitions smoothly if backend becomes unreachable",
+        "Displays non-intrusive reconnection banner when connection drops",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Implemented in App.tsx using setInterval"
+    },
+    {
+      "id": "US-012",
+      "title": "Add Keyboard Navigation and Spotlight Command Palette (Cmd+K)",
+      "description": "As a power user, I want to press Cmd+K or Ctrl+K to open a command palette for rapid actions like New Session and Rule Switching.",
+      "acceptanceCriteria": [
+        "Cmd+K / Ctrl+K opens spotlight search palette with backdrop blur",
+        "Commands include: New Session, Toggle System Prompt, Clear History, Switch Failure Rule",
+        "Esc closes the palette",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Implemented in CommandPalette.tsx"
+    },
+    {
+      "id": "US-013",
+      "title": "Add Request ID Correlation Middleware in Backend",
+      "description": "As a platform engineer, I want every request tagged with a unique X-Request-ID so that logs and errors can be correlated across services.",
+      "acceptanceCriteria": [
+        "Middleware generates UUID4 X-Request-ID if not present in request headers",
+        "Returns X-Request-ID in all response headers",
+        "Logs include request_id in formatted output",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Implemented in main.py RequestIDMiddleware and verified in test_security_headers_and_request_id"
+    },
+    {
+      "id": "US-014",
+      "title": "Add Security Headers and Rate Limiting Middleware",
+      "description": "As a security engineer, I want standard security headers and basic rate limiting on the chat endpoint to prevent abuse.",
+      "acceptanceCriteria": [
+        "Middleware adds X-Content-Type-Options: nosniff and X-Frame-Options: DENY",
+        "Sliding window rate limiter returns HTTP 429 when threshold exceeded (>60 req/min per IP)",
+        "Tests verify rate limit trigger and security headers presence",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Implemented in main.py SecurityHeadersMiddleware and verified in test_security_headers_and_request_id"
+    },
+    {
+      "id": "US-015",
+      "title": "Add Response Regeneration Action in Frontend",
+      "description": "As a user, I want a regenerate button on the latest assistant response so that I can re-query the gateway without retyping.",
+      "acceptanceCriteria": [
+        "Assistant message card has a discreet regenerate action button",
+        "Clicking regenerate removes the assistant reply and re-submits the last user prompt",
+        "Sends current failure simulation header",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Implemented in MessageItem.tsx with handleRegenerate in App.tsx"
+    },
+    {
+      "id": "US-016",
+      "title": "Add Latency Trend Sparkline in Telemetry Drawer",
+      "description": "As an evaluator, I want to see a visual latency graph across recent requests so that I can compare cache hits vs live provider response times.",
+      "acceptanceCriteria": [
+        "Draws a clean SVG sparkline of the last 10 request latencies",
+        "Differentiates cache hits (low latency) from live calls with color tokens",
+        "Respects prefers-reduced-motion",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Implemented in LatencySparkline.tsx"
+    },
+    {
+      "id": "US-017",
+      "title": "Add Alembic Database Migration Configuration",
+      "description": "As a backend engineer, I want versioned database migrations using Alembic so that schema changes are tracked and reproducible.",
+      "acceptanceCriteria": [
+        "Alembic initialized in backend/alembic with alembic.ini",
+        "Initial revision created for messages table",
+        "Makefile includes `make migrate` target",
+        "Tests pass"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Initialized in backend/alembic, created revision 1c9a512f7a36_create_messages_table.py, and added make migrate"
+    },
+    {
+      "id": "US-018",
+      "title": "Add Comprehensive Gateway Performance Benchmark Script",
+      "description": "As an engineer, I want an automated benchmark script to test concurrency, latency percentiles, and cache throughput.",
+      "acceptanceCriteria": [
+        "Script scripts/benchmark.py executes N concurrent requests against /chat",
+        "Computes and prints P50, P90, P99 latency and Requests Per Second (RPS)",
+        "Verifies cache hit acceleration factor (>10x speedup)",
+        "Runs cleanly against live or test backend"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": "Implemented scripts/benchmark.py with asyncio and httpx; added make benchmark"
+    },
+    {
+      "id": "US-019",
+      "title": "Add Deep Provider Health Probe Endpoint (GET /health/deep)",
+      "description": "As an operator, I want a deep health endpoint that validates active connectivity to each configured provider key.",
+      "acceptanceCriteria": [
+        "Endpoint GET /health/deep runs lightweight ping against each configured provider key",
+        "Returns per-key connectivity status (healthy, degraded, invalid)",
+        "Returns HTTP 200 if at least one key is healthy, 503 if all are down",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": "Implemented in routes/health.py and verified in test_deep_health"
+    },
+    {
+      "id": "US-020",
+      "title": "Add Automated Playwright End-to-End Contract Verification",
+      "description": "As a QA engineer, I want an automated headless browser test verifying live UI typing, send button click, and all 9 testids in rendered DOM.",
+      "acceptanceCriteria": [
+        "Headless browser script navigates to http://localhost:3000",
+        "Fills chat-input, clicks send-button, awaits assistant-message",
+        "Verifies all 9 required data-testid elements exist in actual live DOM",
+        "Passes with exit code 0"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": "Implemented in scripts/verify_e2e_bundle.py; added make verify-bundle"
+    },
+    {
+      "id": "US-021",
+      "title": "Comprehensive 10/10 Adversarial and Regression Validation Suite",
+      "description": "As a project lead, I want the full test and audit suite executed across all 21 iterations to ensure 100% reliability and zero regressions.",
+      "acceptanceCriteria": [
+        "make test passes with 100% green coverage",
+        "make audit passes 10/10 adversarial scenarios",
+        "npm test --prefix frontend passes with all 9 testids verified",
+        "npm run build --prefix frontend compiles with 0 errors"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": "All 24 pytest tests pass, 10/10 adversarial scenarios pass, all 9 frontend testids pass, build clean"
+    }
+  ]
+}

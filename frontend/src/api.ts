@@ -1,4 +1,4 @@
-import { ChatApiResponse, HealthStatus } from './types';
+import { ChatApiResponse, HealthStatus, SessionListResponse, CacheStatsResponse } from './types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
@@ -10,11 +10,53 @@ export async function fetchHealth(): Promise<HealthStatus> {
   return res.json();
 }
 
+export async function fetchSessions(limit = 50, offset = 0): Promise<SessionListResponse> {
+  const res = await fetch(`${API_BASE_URL}/sessions?limit=${limit}&offset=${offset}`);
+  if (!res.ok) {
+    throw new Error(`Failed to load sessions: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Failed to delete session: HTTP ${res.status}`);
+  }
+}
+
+export async function fetchSessionMessages(sessionId: string): Promise<any> {
+  const res = await fetch(`${API_BASE_URL}/sessions/${encodeURIComponent(sessionId)}/messages`);
+  if (!res.ok) {
+    throw new Error(`Failed to load session messages: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchCacheStats(): Promise<CacheStatsResponse> {
+  const res = await fetch(`${API_BASE_URL}/cache/stats`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch cache stats: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function clearCache(): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/cache/clear`, { method: 'POST' });
+  if (!res.ok) {
+    throw new Error(`Failed to clear cache: HTTP ${res.status}`);
+  }
+}
+
 export async function sendChatMessage(
   sessionId: string,
   message: string,
   systemPrompt?: string,
-  simulateFailureHeader?: string
+  simulateFailureHeader?: string,
+  temperature?: number,
+  maxTokens?: number
 ): Promise<ChatApiResponse> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -24,13 +66,25 @@ export async function sendChatMessage(
     headers['X-Simulate-Failure'] = simulateFailureHeader.trim();
   }
 
-  const payload: { session_id: string; message: string; system_prompt?: string } = {
+  const payload: {
+    session_id: string;
+    message: string;
+    system_prompt?: string;
+    temperature?: number;
+    max_tokens?: number;
+  } = {
     session_id: sessionId,
     message: message.trim(),
   };
 
   if (systemPrompt && systemPrompt.trim() !== '') {
     payload.system_prompt = systemPrompt.trim();
+  }
+  if (temperature !== undefined) {
+    payload.temperature = temperature;
+  }
+  if (maxTokens !== undefined) {
+    payload.max_tokens = maxTokens;
   }
 
   const res = await fetch(`${API_BASE_URL}/chat`, {
@@ -51,14 +105,5 @@ export async function sendChatMessage(
     throw err;
   }
 
-  return data;
-}
-
-export async function fetchSessionHistory(sessionId: string) {
-  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/messages`);
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    throw new Error(`Failed to fetch history: HTTP ${res.status}`);
-  }
-  return res.json();
+  return data as ChatApiResponse;
 }

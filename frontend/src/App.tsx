@@ -1,8 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChatMessage, HealthStatus } from './types';
-import { fetchHealth, sendChatMessage } from './api';
+import { fetchHealth, sendChatMessage, fetchSessionMessages, clearCache } from './api';
 import { MessageItem } from './components/MessageItem';
 import { FailoverTester } from './components/FailoverTester';
+import { PromptPresets } from './components/PromptPresets';
+import { TuningDrawer } from './components/TuningDrawer';
+import { SessionDrawer } from './components/SessionDrawer';
+import { CommandPalette, CommandItem } from './components/CommandPalette';
+import { LatencySparkline } from './components/LatencySparkline';
+import { exportSessionMarkdown, exportSessionJSON } from './utils/export';
 
 export function App() {
   // Generate a dynamic session_id on page load
@@ -14,9 +20,17 @@ export function App() {
   const [inputText, setInputText] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [showTuning, setShowTuning] = useState(false);
+  const [showSessionDrawer, setShowSessionDrawer] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(2048);
+
   const [simulateRule, setSimulateRule] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [copiedSession, setCopiedSession] = useState(false);
 
@@ -31,13 +45,34 @@ export function App() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Check health on mount
+  // Real-time Heartbeat Polling every 30 seconds (US-011)
   useEffect(() => {
-    fetchHealth()
-      .then(setHealth)
-      .catch((err) => {
-        console.warn('Backend /health unreachable:', err);
-      });
+    const checkHealth = () => {
+      fetchHealth()
+        .then((h) => {
+          setHealth(h);
+          setIsOffline(false);
+        })
+        .catch(() => {
+          setIsOffline(true);
+        });
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Global Keyboard Shortcuts (Cmd+K for Command Palette) (US-012)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Handle starting a new session
@@ -49,6 +84,24 @@ export function App() {
     inputRef.current?.focus();
   };
 
+  const handleSelectSession = async (selectedId: string) => {
+    setSessionId(selectedId);
+    setErrorBanner(null);
+    try {
+      const data = await fetchSessionMessages(selectedId);
+      const loaded: ChatMessage[] = data.messages.map((m: any, idx: number) => ({
+        id: `loaded-${idx}-${Date.now()}`,
+        role: m.role,
+        content: m.content,
+        metadata: m.metadata || undefined,
+      }));
+      setMessages(loaded);
+    } catch (err: any) {
+      console.error('Failed to load past messages:', err);
+      setMessages([]);
+    }
+  };
+
   const handleCopySession = () => {
     navigator.clipboard.writeText(sessionId);
     setCopiedSession(true);
@@ -56,32 +109,35 @@ export function App() {
   };
 
   // Submit message
-  const handleSendMessage = async (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent, customPrompt?: string) => {
     if (e) e.preventDefault();
-    const trimmed = inputText.trim();
-    if (!trimmed || isLoading) return;
+    const textToSend = customPrompt !== undefined ? customPrompt : inputText.trim();
+    if (!textToSend || isLoading) return;
 
     setErrorBanner(null);
 
     // 1. Optimistically append user message to UI
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: trimmed,
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    if (customPrompt === undefined) {
+      const userMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: textToSend,
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setInputText('');
+    }
 
-    // Clear input immediately as required by assignment contract
-    setInputText('');
     setIsLoading(true);
 
     try {
       // 2. Call backend POST /chat
       const response = await sendChatMessage(
         sessionId,
-        trimmed,
+        textToSend,
         systemPrompt || undefined,
-        simulateRule || undefined
+        simulateRule || undefined,
+        temperature,
+        maxTokens
       );
 
       // 3. Append assistant reply with metadata
@@ -118,10 +174,63 @@ export function App() {
     }
   };
 
+  // Regenerate last assistant response (US-015)
+  const handleRegenerate = () => {
+    if (messages.length === 0 || isLoading) return;
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUserMsg) return;
+
+    // Pop the last assistant message
+    setMessages((prev) => {
+      const copy = [...prev];
+      if (copy[copy.length - 1]?.role === 'assistant') {
+        copy.pop();
+      }
+      return copy;
+    });
+
+    handleSendMessage(undefined, lastUserMsg.content);
+  };
+
+  // Cumulative token calculation (US-009)
+  const cumulativeTokens = useMemo(() => {
+    return messages.reduce((acc, m) => {
+      if (m.metadata) {
+        return acc + (m.metadata.input_tokens || 0) + (m.metadata.output_tokens || 0);
+      }
+      return acc;
+    }, 0);
+  }, [messages]);
+
+  // Latency points for sparkline (US-016)
+  const latencyPoints = useMemo(() => {
+    return messages
+      .filter((m) => m.metadata !== undefined)
+      .map((m) => ({
+        latency_ms: m.metadata!.latency_ms,
+        is_cache: m.metadata!.resolution_source === 'LLM_CACHE',
+      }));
+  }, [messages]);
+
+  // Command palette actions (US-012)
+  const commandList: CommandItem[] = useMemo(() => [
+    { id: 'new-sess', title: 'Start New Session', category: 'Session', action: handleNewSession },
+    { id: 'view-sess', title: 'Open Stored Sessions', category: 'Session', action: () => setShowSessionDrawer(true) },
+    { id: 'export-md', title: 'Export Transcript (Markdown)', category: 'Export', action: () => exportSessionMarkdown(sessionId, messages) },
+    { id: 'export-json', title: 'Export Transcript (JSON)', category: 'Export', action: () => exportSessionJSON(sessionId, messages) },
+    { id: 'toggle-sys', title: 'Toggle System Prompt', category: 'Config', action: () => setShowSystemPrompt((p) => !p) },
+    { id: 'toggle-tune', title: 'Toggle Hyperparameters Tuning', category: 'Config', action: () => setShowTuning((p) => !p) },
+    { id: 'sim-norm', title: 'Failover: Normal Direct Execution', category: 'Failover', action: () => setSimulateRule('') },
+    { id: 'sim-429', title: 'Failover: Simulate Rate Limit (key_1=429)', category: 'Failover', action: () => setSimulateRule('key_1=429') },
+    { id: 'sim-500', title: 'Failover: Simulate Internal Error (key_1=500)', category: 'Failover', action: () => setSimulateRule('key_1=500') },
+    { id: 'sim-all', title: 'Failover: Simulate Total Outage (*=429)', category: 'Failover', action: () => setSimulateRule('*=429') },
+    { id: 'clear-cache', title: 'Purge Gateway Cache', category: 'Cache', action: () => clearCache() },
+  ], [sessionId, messages]);
+
   return (
     <div className="flex flex-col h-screen max-w-4xl mx-auto px-4 py-3 sm:py-6 text-ink">
       {/* Top Header - Apple Frosted Mast */}
-      <header className="flex items-center justify-between pb-4 border-b border-rule-subtle shrink-0">
+      <header className="flex items-center justify-between pb-3.5 border-b border-rule-subtle shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-[8px] bg-paper-2 border border-rule flex items-center justify-center shadow-sm">
             <span className="font-mono text-accent font-semibold text-sm">λ</span>
@@ -150,18 +259,54 @@ export function App() {
               </button>
               <span className="text-ink-subtle">·</span>
               <span className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${health?.status === 'ok' ? 'bg-ok animate-apple-pulse' : 'bg-accent'}`} />
-                <span>{health?.status === 'ok' ? `${health.keys_configured} keys active` : 'connecting...'}</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isOffline
+                      ? 'bg-bad'
+                      : health?.status === 'ok'
+                      ? 'bg-ok animate-apple-pulse'
+                      : 'bg-accent'
+                  }`}
+                />
+                <span>
+                  {isOffline
+                    ? 'offline'
+                    : health?.status === 'ok'
+                    ? `${health.keys_configured} keys active`
+                    : 'connecting...'}
+                </span>
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowSessionDrawer(true)}
+            className="px-2.5 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium"
+            title="Browse past sessions"
+          >
+            <span>history</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowTuning(!showTuning)}
+            className={`px-2.5 py-1.5 rounded-[8px] border text-xs font-medium transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] ${
+              showTuning
+                ? 'bg-paper-2 border-rule-2 text-ink shadow-sm'
+                : 'bg-paper-2/60 border-rule-subtle hover:border-rule text-ink-muted hover:text-ink'
+            }`}
+            title="Adjust Temperature & Max Tokens"
+          >
+            <span>tuning</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-            className={`px-3 py-1.5 rounded-[8px] border text-xs font-medium transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] ${
+            className={`px-2.5 py-1.5 rounded-[8px] border text-xs font-medium transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] ${
               showSystemPrompt
                 ? 'bg-paper-2 border-rule-2 text-ink shadow-sm'
                 : 'bg-paper-2/60 border-rule-subtle hover:border-rule text-ink-muted hover:text-ink'
@@ -174,17 +319,36 @@ export function App() {
           <button
             type="button"
             onClick={handleNewSession}
-            className="px-3 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium flex items-center gap-1.5"
+            className="px-2.5 py-1.5 rounded-[8px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] text-xs font-medium"
             title="Start New Session"
           >
-            <span>new session</span>
+            <span>new</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowCommandPalette(true)}
+            className="hidden sm:inline-flex px-2 py-1.5 rounded-[8px] bg-paper-3 border border-rule-subtle text-[11px] font-mono text-ink-subtle hover:text-ink hover:border-rule"
+            title="Open Command Palette"
+          >
+            ⌘K
           </button>
         </div>
       </header>
 
-      {/* Optional System Prompt Collapsible Panel */}
+      {/* Optional Hyperparameters Tuning Drawer (US-007) */}
+      {showTuning && (
+        <TuningDrawer
+          temperature={temperature}
+          maxTokens={maxTokens}
+          onTemperatureChange={setTemperature}
+          onMaxTokensChange={setMaxTokens}
+        />
+      )}
+
+      {/* Optional System Prompt Collapsible Panel with Presets (US-008) */}
       {showSystemPrompt && (
-        <div className="mt-3 p-3 bg-paper-2/80 border border-rule-subtle rounded-[12px] animate-apple-entrance text-xs">
+        <div className="mt-2.5 p-3 bg-paper-2/80 border border-rule-subtle rounded-[12px] animate-apple-entrance text-xs">
           <label className="block text-ink-muted font-medium mb-1.5">
             System prompt override:
           </label>
@@ -196,17 +360,28 @@ export function App() {
             placeholder="e.g. You are a concise geography professor."
             className="w-full bg-paper-3 border border-rule rounded-[8px] px-3 py-2 text-ink placeholder-ink-subtle focus:outline-none focus:border-rule-2 font-mono text-xs transition-colors"
           />
+          <PromptPresets onSelectPreset={setSystemPrompt} />
         </div>
       )}
 
       {/* Evaluator Failover Simulation Bar */}
-      <div className="mt-3">
+      <div className="mt-2.5">
         <FailoverTester currentRule={simulateRule} onSelectRule={setSimulateRule} />
       </div>
 
+      {/* Offline Alert Banner */}
+      {isOffline && (
+        <div className="mt-2.5 px-3 py-2 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-bad flex items-center justify-between animate-apple-entrance">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-bad animate-apple-blink" />
+            <span>Gateway unreachable. Attempting automatic reconnection...</span>
+          </div>
+        </div>
+      )}
+
       {/* Global Error Banner if any */}
       {errorBanner && (
-        <div className="mt-3 px-3.5 py-2.5 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-ink flex items-center justify-between animate-apple-entrance">
+        <div className="mt-2.5 px-3.5 py-2.5 bg-bad-soft/60 border border-bad/40 rounded-[10px] text-xs text-ink flex items-center justify-between animate-apple-entrance">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-bad shrink-0" />
             <span>{errorBanner}</span>
@@ -222,7 +397,7 @@ export function App() {
       )}
 
       {/* Chat Messages Feed */}
-      <main className="flex-1 overflow-y-auto py-4 px-1 space-y-2">
+      <main className="flex-1 overflow-y-auto py-3 px-1 space-y-2">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-apple-entrance">
             <div className="w-12 h-12 rounded-[14px] bg-paper-2 border border-rule-subtle flex items-center justify-center mb-4 shadow-sm">
@@ -244,16 +419,21 @@ export function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setInputText("Explain REST APIs in two sentences.")}
+                onClick={() => setInputText("Write a Python binary search function.")}
                 className="p-3 rounded-[10px] bg-paper-2/60 border border-rule-subtle hover:border-rule text-left text-ink-muted hover:text-ink transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]"
               >
-                Explain REST APIs in two sentences.
+                Write a Python binary search function.
               </button>
             </div>
           </div>
         ) : (
-          messages.map((msg) => (
-            <MessageItem key={msg.id} message={msg} />
+          messages.map((msg, idx) => (
+            <MessageItem
+              key={msg.id}
+              message={msg}
+              cumulativeTokens={cumulativeTokens}
+              onRegenerate={idx === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
+            />
           ))
         )}
 
@@ -269,7 +449,7 @@ export function App() {
       </main>
 
       {/* Message Input Footer - Apple Dock */}
-      <footer className="pt-3 border-t border-rule-subtle shrink-0">
+      <footer className="pt-2.5 border-t border-rule-subtle shrink-0">
         <form onSubmit={handleSendMessage} className="relative flex items-center">
           <textarea
             ref={inputRef}
@@ -306,11 +486,47 @@ export function App() {
           </button>
         </form>
 
-        <div className="flex items-center justify-between mt-2.5 text-[11px] text-ink-subtle px-1 font-mono">
-          <span>SQLite persistence ./data/app.db</span>
-          <span>LiteLLM gateway key rotation & cache</span>
+        <div className="flex items-center justify-between mt-2 text-[11px] text-ink-subtle px-1 font-mono">
+          <div className="flex items-center gap-3">
+            <span>SQLite ./data/app.db</span>
+            {latencyPoints.length > 1 && (
+              <LatencySparkline points={latencyPoints} />
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => exportSessionMarkdown(sessionId, messages)}
+              className="hover:text-ink transition-colors"
+            >
+              export md
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => exportSessionJSON(sessionId, messages)}
+              className="hover:text-ink transition-colors"
+            >
+              export json
+            </button>
+          </div>
         </div>
       </footer>
+
+      {/* Slide-out Session Drawer (US-005) */}
+      <SessionDrawer
+        isOpen={showSessionDrawer}
+        activeSessionId={sessionId}
+        onClose={() => setShowSessionDrawer(false)}
+        onSelectSession={handleSelectSession}
+      />
+
+      {/* Command Palette (US-012) */}
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        commands={commandList}
+      />
     </div>
   );
 }

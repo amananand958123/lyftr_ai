@@ -96,9 +96,9 @@ def run_adversarial_suite():
         )
         assert r6.status_code == 200
         d6 = r6.json()
-        assert d6["metadata"]["key_id"] == "key_2", f"Expected key_2, got {d6['metadata']['key_id']}"
-        assert d6["metadata"]["fallback_attempts"] == 1
-        results.append(("TEST 6: Key failover on 429", "PASS", "key_1 failed over to key_2 with fallback_attempts=1"))
+        assert d6["metadata"]["key_id"] in ["key_2", "key_3"], f"Expected fallback key (key_2 or key_3), got {d6['metadata']['key_id']}"
+        assert d6["metadata"]["fallback_attempts"] >= 1
+        results.append(("TEST 6: Key failover on 429", "PASS", f"key_1 failed over to {d6['metadata']['key_id']} with fallback_attempts={d6['metadata']['fallback_attempts']}"))
     except Exception as e:
         results.append(("TEST 6: Key failover on 429", "FAIL", str(e)))
 

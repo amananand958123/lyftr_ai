@@ -30,3 +30,21 @@ export interface HealthStatus {
   keys_configured: number;
   cache_enabled: boolean;
 }
+
+export interface SessionSummary {
+  session_id: string;
+  message_count: number;
+  last_message_preview?: string | null;
+  last_active_at?: string | null;
+}
+
+export interface SessionListResponse {
+  total: number;
+  sessions: SessionSummary[];
+}
+
+export interface CacheStatsResponse {
+  cache_enabled: boolean;
+  cache_type: string;
+  supported_models: string[];
+}

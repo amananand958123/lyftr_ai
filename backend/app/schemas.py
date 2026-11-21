@@ -6,10 +6,24 @@ class HealthResponse(BaseModel):
     keys_configured: int
     cache_enabled: bool = True
 
+class DeepProviderHealth(BaseModel):
+    key_id: str
+    model: str
+    status: str
+    latency_ms: Optional[int] = None
+
+class DeepHealthResponse(BaseModel):
+    status: str
+    total_keys: int
+    healthy_keys: int
+    providers: List[DeepProviderHealth]
+
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=128)
     message: str = Field(..., min_length=1, max_length=4000)
     system_prompt: Optional[str] = None
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, gt=0, le=8192)
 
     @field_validator("message")
     @classmethod
@@ -56,3 +70,23 @@ class HistoryMessage(BaseModel):
 class HistoryResponse(BaseModel):
     session_id: str
     messages: List[HistoryMessage]
+
+class SessionSummary(BaseModel):
+    session_id: str
+    message_count: int
+    last_message_preview: Optional[str] = None
+    last_active_at: Optional[str] = None
+
+class SessionListResponse(BaseModel):
+    total: int
+    sessions: List[SessionSummary]
+
+class SessionDeleteResponse(BaseModel):
+    session_id: str
+    deleted: bool = True
+    messages_deleted: int
+
+class CacheStatsResponse(BaseModel):
+    cache_enabled: bool
+    cache_type: str = "local"
+    supported_models: List[str]

@@ -43,7 +43,9 @@ def post_chat(
     try:
         result = complete_chat(
             messages=llm_messages,
-            simulate_header=x_simulate_failure
+            simulate_header=x_simulate_failure,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens
         )
     except AllProvidersUnavailableException:
         # Crucial rule: A request that fails (503) must NOT be added to session history

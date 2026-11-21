@@ -56,3 +56,25 @@ def test_session_isolation(client):
     assert "Secret code is 12345" not in contents_b
     assert "Hello from session B" in contents_b
     assert "Hello from session B" not in contents_a
+
+def test_list_and_delete_sessions(client):
+    sess_c = "sess-list-delete"
+    client.post("/chat", json={"session_id": sess_c, "message": "Testing session listing"})
+
+    # Test GET /sessions
+    list_resp = client.get("/sessions")
+    assert list_resp.status_code == 200
+    list_data = list_resp.json()
+    assert list_data["total"] >= 1
+    session_ids = [s["session_id"] for s in list_data["sessions"]]
+    assert sess_c in session_ids
+
+    # Test DELETE /sessions/{session_id}
+    del_resp = client.delete(f"/sessions/{sess_c}")
+    assert del_resp.status_code == 200
+    assert del_resp.json()["deleted"] is True
+    assert del_resp.json()["messages_deleted"] >= 2
+
+    # Verify session is now gone
+    verify_resp = client.get(f"/sessions/{sess_c}/messages")
+    assert verify_resp.status_code == 404

@@ -3,10 +3,15 @@ import { ChatMetadata } from '../types';
 
 interface MetadataBadgeProps {
   metadata: ChatMetadata;
+  cumulativeTokens?: number;
 }
 
-export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata }) => {
+export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata, cumulativeTokens }) => {
   const isCache = metadata.resolution_source === 'LLM_CACHE';
+
+  // Rough estimation: blended ~$0.15 per million tokens for lightweight models
+  const totalTokens = metadata.input_tokens + metadata.output_tokens;
+  const estimatedCost = (totalTokens * 0.00000015).toFixed(6);
 
   return (
     <div className="mt-3 pt-2.5 border-t border-rule-subtle flex flex-wrap items-center gap-2 text-xs font-mono">
@@ -69,6 +74,14 @@ export const MetadataBadge: React.FC<MetadataBadgeProps> = ({ metadata }) => {
           )}
         </span>
       )}
+
+      {/* Cost & Token HUD (US-009) */}
+      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-ink-subtle">
+        <span>est: ${estimatedCost}</span>
+        {cumulativeTokens !== undefined && (
+          <span>· session: {cumulativeTokens} tok</span>
+        )}
+      </span>
     </div>
   );
 };
