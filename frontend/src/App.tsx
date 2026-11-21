@@ -45,22 +45,31 @@ export function App() {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Real-time Heartbeat Polling every 30 seconds (US-011)
+  // Real-time Heartbeat Polling with rapid retry on cold start (US-011)
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let isMounted = true;
+
     const checkHealth = () => {
       fetchHealth()
         .then((h) => {
+          if (!isMounted) return;
           setHealth(h);
           setIsOffline(false);
+          timeoutId = setTimeout(checkHealth, 30000); // 30s when online
         })
         .catch(() => {
+          if (!isMounted) return;
           setIsOffline(true);
+          timeoutId = setTimeout(checkHealth, 3000); // Rapid 3s retry during cold-start
         });
     };
 
     checkHealth();
-    const interval = setInterval(checkHealth, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   // Global Keyboard Shortcuts (Cmd+K for Command Palette) (US-012)
