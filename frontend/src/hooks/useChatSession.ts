@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ChatMessage, ChatMetadata } from '../types';
-import { sendChatMessage, fetchSessionMessages } from '../api';
+import { streamChatMessage, fetchSessionMessages } from '../api';
 
 export interface SendOptions {
   systemPrompt?: string;
@@ -61,18 +61,29 @@ export function useChatSession() {
       }
       setIsLoading(true);
 
+      // The reply bubble is added when the first piece of text arrives, then grows piece by piece.
+      const replyId = `assistant-${Date.now()}`;
+      const updateReply = (change: Partial<ChatMessage>) =>
+        setMessages((prev) => prev.map((m) => (m.id === replyId ? { ...m, ...change } : m)));
+      let replyText = '';
+
       try {
-        const response = await sendChatMessage(sessionId, text, options);
-        addMessage({
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: response.reply,
-          metadata: response.metadata,
+        const metadata = await streamChatMessage(sessionId, text, options, (piece) => {
+          if (!piece) return; // providers sometimes send empty chunks
+          if (replyText === '') {
+            addMessage({ id: replyId, role: 'assistant', content: piece, isStreaming: true });
+          } else {
+            updateReply({ content: replyText + piece });
+          }
+          replyText += piece;
         });
+        updateReply({ metadata, isStreaming: false });
       } catch (err: any) {
         const status = err.status || 500;
         const detail = err.message || 'An unexpected error occurred. Please try again.';
         setErrorBanner(`HTTP ${status}: ${detail}`);
+        // Drop a half-finished reply (it was not saved on the server either).
+        setMessages((prev) => prev.filter((m) => m.id !== replyId));
         // Also show the error inside the chat, so the conversation never just goes blank.
         addMessage({ id: `err-${Date.now()}`, role: 'assistant', content: `Error (${status}): ${detail}`, isError: true });
       } finally {

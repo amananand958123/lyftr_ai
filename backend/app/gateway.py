@@ -13,9 +13,11 @@ conversation twice returns the saved answer instead of calling the provider.
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 import litellm
+
+litellm.suppress_debug_info = True  # hide LiteLLM's "Provider List" banner in logs
 
 from app.config import settings
 
@@ -71,6 +73,27 @@ def parse_simulate_failure_header(header: Optional[str]) -> Dict[str, int]:
     return rules
 
 
+def build_request(key, messages, simulated_failures, temperature, max_tokens) -> dict:
+    """The arguments for litellm.completion() for one key."""
+    request = {
+        "model": key["model"],
+        "messages": messages,
+        # Skip the cache while simulating, so we really test the backup key.
+        "caching": not simulated_failures,
+    }
+    if temperature is not None:
+        request["temperature"] = temperature
+    if max_tokens is not None:
+        request["max_tokens"] = max_tokens
+
+    if is_placeholder_key(key["api_key"]):
+        # No real key configured: LiteLLM returns this fake reply without any network call.
+        request["mock_response"] = MOCK_REPLY
+    else:
+        request["api_key"] = key["api_key"]
+    return request
+
+
 def complete_chat(
     messages: List[Dict[str, str]],
     simulate_header: Optional[str] = None,
@@ -91,22 +114,7 @@ def complete_chat(
             failed_attempts += 1
             continue
 
-        request = {
-            "model": key["model"],
-            "messages": messages,
-            # Skip the cache while simulating, so we really test the backup key.
-            "caching": not simulated_failures,
-        }
-        if temperature is not None:
-            request["temperature"] = temperature
-        if max_tokens is not None:
-            request["max_tokens"] = max_tokens
-
-        if is_placeholder_key(key["api_key"]):
-            # No real key configured: LiteLLM returns this fake reply without any network call.
-            request["mock_response"] = MOCK_REPLY
-        else:
-            request["api_key"] = key["api_key"]
+        request = build_request(key, messages, simulated_failures, temperature, max_tokens)
 
         try:
             logger.info(f"Calling {key['model']} with {key_id}")
@@ -136,6 +144,61 @@ def complete_chat(
             key_id=None if from_cache else key_id,
             fallback_attempts=0 if from_cache else failed_attempts,
         )
+
+    logger.error("All keys failed.")
+    raise AllProvidersUnavailableException("all providers unavailable")
+
+
+@dataclass
+class OpenStream:
+    """A live reply stream from the first key that worked."""
+    key_id: str
+    model: str
+    stream: Iterator  # the remaining chunks
+    first_chunk: object
+    fallback_attempts: int
+    start_time: float
+
+    @property
+    def from_cache(self) -> bool:
+        hidden_params = getattr(self.stream, "_hidden_params", None) or {}
+        return hidden_params.get("cache_hit") is True
+
+
+def open_stream(
+    messages: List[Dict[str, str]],
+    simulate_header: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> OpenStream:
+    """
+    Same failover as complete_chat, but for streaming.
+    We wait for the FIRST chunk before picking a key: errors like 429 show up there,
+    and once text has reached the user we can't switch to another key anymore.
+    """
+    simulated_failures = parse_simulate_failure_header(simulate_header)
+    failed_attempts = 0
+    start_time = time.perf_counter()
+
+    for key in settings.get_key_pool():
+        key_id = key["key_id"]
+        if "*" in simulated_failures or key_id in simulated_failures:
+            logger.warning(f"Simulating failure for {key_id}")
+            failed_attempts += 1
+            continue
+
+        request = build_request(key, messages, simulated_failures, temperature, max_tokens)
+        request["stream"] = True
+        try:
+            logger.info(f"Streaming {key['model']} with {key_id}")
+            stream = litellm.completion(**request)
+            first_chunk = next(stream)
+        except Exception as error:
+            logger.error(f"{key_id} failed: {error}. Trying the next key.")
+            failed_attempts += 1
+            continue
+
+        return OpenStream(key_id, key["model"], stream, first_chunk, failed_attempts, start_time)
 
     logger.error("All keys failed.")
     raise AllProvidersUnavailableException("all providers unavailable")

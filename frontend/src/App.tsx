@@ -216,7 +216,8 @@ export function App() {
           ))
         )}
 
-        {isLoading && (
+        {/* "Thinking" indicator until the first words of the reply arrive */}
+        {isLoading && !messages.some((m) => m.isStreaming) && (
           <div className="flex justify-start mb-4 animate-apple-entrance">
             <div className="flex gap-2.5 max-w-[85%] items-center bg-paper-2/90 border border-rule px-4 py-3 rounded-[14px] rounded-bl-[4px] text-xs text-ink-muted">
               <span className="w-2 h-2 rounded-full bg-accent animate-apple-blink" />

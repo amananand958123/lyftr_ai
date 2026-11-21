@@ -48,6 +48,19 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRegenerate,
     );
   }
 
+  // While the reply is still arriving: plain bubble with a blinking cursor, no buttons or metadata yet.
+  // (It only becomes a real "assistant-message" once it's finished and has its metadata.)
+  if (message.isStreaming) {
+    return (
+      <div className="flex justify-start mb-5">
+        <div className="w-full max-w-[95%] sm:max-w-[88%] rounded-[16px] rounded-bl-[4px] px-5 py-4 border bg-paper-2/90 border-rule text-ink shadow-sm">
+          <MarkdownRenderer content={message.content} />
+          <span className="inline-block w-2 h-4 align-middle bg-accent animate-apple-blink" />
+        </div>
+      </div>
+    );
+  }
+
   // Assistant message container (MUST contain data-testid="assistant-message")
   return (
     <div className="flex justify-start mb-5 animate-apple-entrance">

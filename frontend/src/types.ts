@@ -16,13 +16,8 @@ export interface ChatMessage {
   content: string;
   metadata?: ChatMetadata;
   isError?: boolean;
+  isStreaming?: boolean; // true while the reply is still arriving
   timestamp?: string;
-}
-
-export interface ChatApiResponse {
-  session_id: string;
-  reply: string;
-  metadata: ChatMetadata;
 }
 
 export interface HealthStatus {
