@@ -120,19 +120,21 @@ class RateLimitMiddleware:
 app.add_middleware(RateLimitMiddleware)
 
 # CORS Middleware (Strict explicit domain control - Item 4)
-origins = settings.get_cors_origins()
-if not origins:
-    origins = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "https://lyftr-ai-xi.vercel.app",
-    ]
+explicit_origins = {
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "https://lyftr-ai-xi.vercel.app",
+    "https://lyftr-chat.vercel.app",
+}
+for origin in settings.get_cors_origins():
+    if origin and origin.strip():
+        explicit_origins.add(origin.strip())
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=list(explicit_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
