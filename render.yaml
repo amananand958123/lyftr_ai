@@ -4,20 +4,16 @@ services:
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /health
-    disk:
-      name: sqlite-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: DATABASE_URL
-        value: sqlite:////data/app.db
+        value: sqlite:///./data/app.db
       - key: ENABLE_FAILURE_SIMULATION
         value: "true"
       - key: DEFAULT_MODEL
         value: gemini/gemini-2.0-flash
       - key: ALLOWED_ORIGINS
-        value: https://lyftr-chat.vercel.app,http://localhost:3000
+        value: https://*.vercel.app,http://localhost:3000
       - key: LLM_API_KEYS
         sync: false
