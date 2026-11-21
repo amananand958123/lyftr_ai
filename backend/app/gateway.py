@@ -94,10 +94,12 @@ def complete_chat(
             continue
 
         try:
+            # Bypass cache during failure simulation to ensure failover to key_2 is tested live
+            use_caching = not bool(simulation_rules)
             kwargs = {
                 "model": model,
                 "messages": messages,
-                "caching": True,
+                "caching": use_caching,
             }
             # Only pass api_key if not a dummy/mock placeholder
             if api_key and not api_key.startswith("placeholder") and not api_key.startswith("YOUR_"):

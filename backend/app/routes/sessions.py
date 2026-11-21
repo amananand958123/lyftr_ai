@@ -7,7 +7,7 @@ from app.schemas import HistoryResponse, HistoryMessage, HistoryItemMetadata
 
 router = APIRouter(tags=["Sessions"])
 
-@router.get("/sessions/{session_id}/messages", response_model=HistoryResponse)
+@router.get("/sessions/{session_id}/messages", response_model=HistoryResponse, response_model_exclude_none=True)
 def get_session_messages(session_id: str, db: Session = Depends(get_db)):
     """
     Returns the stored history of one session from SQLite, oldest first, without the system prompt.
