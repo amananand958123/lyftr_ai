@@ -157,6 +157,8 @@ export function App() {
         metadata: response.metadata,
       };
       setMessages((prev) => [...prev, assistantMsg]);
+      setIsOffline(false);
+      setErrorBanner(null);
     } catch (err: any) {
       console.error('Chat error:', err);
       const errorMsgText = err.message || 'An unexpected error occurred. Please try again.';
