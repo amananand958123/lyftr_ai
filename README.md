@@ -5,7 +5,7 @@ A full-stack, production-grade LLM chatbot built for the **Lyftr AI Full-Stack A
 ---
 
 ## 1. Live URLs
-- **Frontend Live Application:** `https://lyftr-chat.vercel.app` *(or your custom deployed URL)*
+- **Frontend Live Application:** `https://lyftr-ai-xi.vercel.app`
 - **Backend Live API:** `https://lyftr-ai-backend.onrender.com`
 - **Live Health Endpoint:** `https://lyftr-ai-backend.onrender.com/health`
 
