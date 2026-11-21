@@ -104,21 +104,21 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Desktop navigation buttons */}
       <div className="hidden sm:flex items-center gap-1.5">
         <HeaderButton onClick={onOpenSessionDrawer} title="Browse past stored sessions (⌘S)">
-          history
+          History
         </HeaderButton>
         <HeaderButton onClick={() => setShowTuning((open) => !open)} active={showTuning} title="Adjust Temperature & Max Tokens">
-          tuning
+          Tuning
         </HeaderButton>
         <HeaderButton onClick={() => setShowSystemPrompt((open) => !open)} active={showSystemPrompt} title="Configure System Prompt">
-          system prompt
+          System Prompt
         </HeaderButton>
         <HeaderButton onClick={onNewSession} title="Start New Session (⌥N or ⌘N)">
-          new
+          New
         </HeaderButton>
 
         <HeaderButton onClick={onToggleTheme} title={isDark ? 'Switch to Light Mode (⌘D)' : 'Switch to Dark Mode (⌘D)'}>
           {isDark ? <Sun className="w-3.5 h-3.5 text-accent" /> : <Moon className="w-3.5 h-3.5 text-accent" />}
-          <span>{isDark ? 'light' : 'dark'}</span>
+          <span>{isDark ? 'Light' : 'Dark'}</span>
         </HeaderButton>
 
         <button
@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Mobile navigation with ⋯ menu (Item 53) */}
       <div className="flex sm:hidden items-center gap-1.5" ref={menuRef}>
         <HeaderButton onClick={onNewSession} title="Start New Session (⌥N)">
-          new
+          New
         </HeaderButton>
         <HeaderButton onClick={onToggleTheme} title="Toggle Theme">
           {isDark ? <Sun className="w-3.5 h-3.5 text-accent" /> : <Moon className="w-3.5 h-3.5 text-accent" />}
