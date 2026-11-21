@@ -77,9 +77,9 @@ make test
 
 ### C. SQLite Session Storage & Concurrency
 - **Single Database Solution:** Uses SQLite only—no Redis or Postgres.
-- **Persistent Docker Volume:** The database file is located at `DATABASE_URL=sqlite:////data/app.db` under a named Docker volume (`sqlite_data:/data`) so conversation history survives container restarts.
+- **Persistent Docker Volume:** The database file is located at `DATABASE_URL=sqlite:////data/app.db` under a named Docker volume (`sqlite_data:/data`) so conversation history survives container restarts and local re-deployments. Note on cloud hosting: Render's free tier provides an ephemeral filesystem; persistent disk volumes on Render require a paid Starter plan.
 - **WAL Mode Optimization:** Enabled `PRAGMA journal_mode=WAL` and `PRAGMA synchronous=NORMAL` to maximize concurrent read/write throughput without table locks.
-- **Error Hygiene:** Unsuccessful requests (422 validation errors or 503 provider exhaustion) are never written to the database.
+- **Error Hygiene:** Unsuccessful requests (400 validation/context errors, 422 unprocessable entities, or 503 provider exhaustion) are never written to the database.
 
 ### D. Real-Time Streaming (`POST /chat/stream`)
 - **Server-Sent Events (SSE):** Provides real-time token delivery via standard `text/event-stream` chunks (`data: {"type": "delta", "text": "..."}`).

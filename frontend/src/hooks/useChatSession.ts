@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { ChatMessage, ChatMetadata } from '../types';
-import { streamChatMessage, fetchSessionMessages, StreamCutoffError } from '../api';
+import { streamChatMessage, fetchSessionMessages, StreamCutoffError, getClientId } from '../api';
 
 export interface SendOptions {
   systemPrompt?: string;
@@ -10,13 +10,17 @@ export interface SendOptions {
   regenerate?: boolean;
 }
 
-// e.g. "s-k3j9x2a"
+export interface UseChatSessionOptions {
+  onAbort?: (text: string) => void;
+}
+
+// e.g. "s-c3j9x2a-8f2k1m" scoped to the persistent client ID
 function newSessionId() {
-  return `s-${Math.random().toString(36).substring(2, 9)}`;
+  return `s-${getClientId()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
 // Holds the chat state (session id, messages, loading, error) and the actions that change it.
-export function useChatSession() {
+export function useChatSession(sessionOpts?: UseChatSessionOptions) {
   const [sessionId, setSessionId] = useState(newSessionId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,10 +83,11 @@ export function useChatSession() {
       stopStreaming();
       setErrorBanner(null);
       const targetSessionId = sessionId;
+      const userMsgId = `user-${Date.now()}`;
 
       // Show the user's message right away, before the server answers.
       if (!isRegenerate) {
-        addMessage({ id: `user-${Date.now()}`, role: 'user', content: text });
+        addMessage({ id: userMsgId, role: 'user', content: text });
       }
       setIsLoading(true);
 
@@ -119,9 +124,10 @@ export function useChatSession() {
         }
       } catch (err: any) {
         if (abortController.signal.aborted || err.name === 'AbortError') {
-          // Streaming was stopped by the user. Drop the unfinished reply because the server
-          // never saves interrupted turns, keeping screen state identical to SQLite database.
-          setMessages((prev) => prev.filter((m) => m.id !== replyId));
+          // Streaming was stopped by the user. Drop both the unfinished reply and the unpersisted user prompt,
+          // keeping screen state identical to SQLite database, and restore prompt to input box.
+          setMessages((prev) => prev.filter((m) => m.id !== replyId && m.id !== userMsgId));
+          sessionOpts?.onAbort?.(text);
           return;
         }
 
@@ -129,11 +135,9 @@ export function useChatSession() {
           return;
         }
 
-        const isCutoff = err instanceof StreamCutoffError || err.name === 'StreamCutoffError' || err.isStreamCutoff;
+        const isCutoff = err instanceof StreamCutoffError;
         const status = err.status || (isCutoff ? 502 : 500);
-        const detail = isCutoff
-          ? (err.message || 'The reply was cut off, please try again.')
-          : (err.message || 'An unexpected error occurred. Please try again.');
+        const detail = err.message || (isCutoff ? 'The reply was cut off, please try again.' : 'An unexpected error occurred. Please try again.');
         const displayText = isCutoff ? detail : `Error (${status}): ${detail}`;
 
         setErrorBanner(isCutoff ? detail : `HTTP ${status}: ${detail}`);
@@ -148,7 +152,7 @@ export function useChatSession() {
         setIsLoading(false);
       }
     },
-    [sessionId, isLoading, stopStreaming]
+    [sessionId, isLoading, stopStreaming, sessionOpts]
   );
 
   // Remove the last reply and ask the same question again.

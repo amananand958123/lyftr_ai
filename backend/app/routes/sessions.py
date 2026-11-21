@@ -29,7 +29,16 @@ def list_sessions(
 
 
 @router.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
-def delete_session(session_id: str, db: Session = Depends(get_db)):
+def delete_session(
+    session_id: str,
+    x_client_id: Optional[str] = Header(None, alias="X-Client-ID"),
+    db: Session = Depends(get_db),
+):
+    safe_client = message_repository.sanitize_client_id(x_client_id)
+    # If client ID is passed, enforce that the session belongs to this client
+    if safe_client and not session_id.startswith(f"s-{safe_client}-"):
+        raise HTTPException(status_code=403, detail="forbidden: cannot delete another client's session")
+
     deleted_count = message_repository.delete_session(db, session_id)
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail="session not found")

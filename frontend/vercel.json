@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/(health|chat|sessions|cache)(.*)",
+      "destination": "https://lyftr-ai-backend.onrender.com/$1$2"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

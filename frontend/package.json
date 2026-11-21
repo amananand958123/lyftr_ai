@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node test-components.cjs"
+    "test": "node test-components.cjs && node test-markdown.cjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

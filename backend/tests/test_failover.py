@@ -75,3 +75,25 @@ def test_simulation_disabled_switch(client):
         assert data["metadata"]["fallback_attempts"] == 0
     finally:
         settings.ENABLE_FAILURE_SIMULATION = True
+
+
+def test_non_retryable_provider_error_returns_400(client, monkeypatch):
+    """Context window exceedance or non-retryable 400 from provider must return 400, not 503."""
+    import litellm
+    from app import gateway
+
+    def mock_completion(*args, **kwargs):
+        raise litellm.exceptions.ContextWindowExceededError(
+            message="Context window exceeded: maximum context length is 8192 tokens",
+            model="gemini/gemini-2.0-flash",
+            llm_provider="gemini",
+        )
+
+    monkeypatch.setattr(litellm, "completion", mock_completion)
+
+    response = client.post(
+        "/chat",
+        json={"session_id": "sess-context-err", "message": "Trigger context error"}
+    )
+    assert response.status_code == 400
+    assert "Provider rejected request" in response.json()["detail"]

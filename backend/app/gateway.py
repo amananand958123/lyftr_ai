@@ -13,10 +13,9 @@ conversation twice returns the saved answer instead of calling the provider.
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import litellm
-from fastapi import HTTPException
 
 litellm.suppress_debug_info = True  # hide LiteLLM's "Provider List" banner in logs
 
@@ -31,6 +30,14 @@ MOCK_REPLY = (
     "This is an automated response from Lyftr AI Assistant. "
     "The system architecture incorporates key failover, response caching, and SQLite persistence."
 )
+
+
+class NonRetryableProviderError(Exception):
+    """Client-induced deterministic error (e.g. context length exceeded, bad request). Not eligible for failover."""
+
+
+class AllProvidersUnavailableException(Exception):
+    """Every key in the pool failed."""
 
 
 def sync_cache_keys(
@@ -79,10 +86,6 @@ def is_failover_eligible(error: Exception) -> bool:
     if status_code == 400:
         return False
     return True
-
-
-class AllProvidersUnavailableException(Exception):
-    """Every key in the pool failed."""
 
 
 @dataclass
@@ -144,13 +147,17 @@ def build_request(key, messages, simulated_failures, temperature, max_tokens, sk
     return request
 
 
-def complete_chat(
+def iter_candidate_keys(
     messages: List[Dict[str, str]],
     simulate_header: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     skip_cache: bool = False,
-) -> GatewayResult:
+) -> Iterator[Tuple[dict, dict, int, float]]:
+    """
+    Shared key rotation loop for both complete_chat and open_stream.
+    Yields (key, request_dict, current_failed_attempts, start_time).
+    """
     key_pool = settings.get_key_pool()
     simulated_failures = parse_simulate_failure_header(simulate_header)
     failed_attempts = 0
@@ -158,29 +165,42 @@ def complete_chat(
 
     for key in key_pool:
         key_id = key["key_id"]
-
-        # Failure simulation (for demos/tests): pretend this key returned an error.
         if "*" in simulated_failures or key_id in simulated_failures:
             logger.warning(f"Simulating failure for {key_id}")
             failed_attempts += 1
             continue
 
-        if not skip_cache and not simulated_failures:
+        request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
+        yield key, request, failed_attempts, start_time
+        failed_attempts += 1
+
+
+def complete_chat(
+    messages: List[Dict[str, str]],
+    simulate_header: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    skip_cache: bool = False,
+) -> GatewayResult:
+    # Ensure cache keys are synchronized between sync and streaming endpoints
+    if not skip_cache and not simulate_header:
+        for key in settings.get_key_pool():
             sync_cache_keys(key["model"], messages, temperature, max_tokens)
 
-        request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
-
+    for key, request, failed_attempts, start_time in iter_candidate_keys(
+        messages, simulate_header, temperature, max_tokens, skip_cache
+    ):
+        key_id = key["key_id"]
         try:
             logger.info(f"Calling {key['model']} with {key_id}")
             response = litellm.completion(**request)
-            if not skip_cache and not simulated_failures:
+            if not skip_cache and not simulate_header:
                 sync_cache_keys(key["model"], messages, temperature, max_tokens)
         except Exception as error:
             if not is_failover_eligible(error):
                 logger.warning(f"{key_id} received non-retryable client error: {error}. Not failing over.")
-                raise HTTPException(status_code=400, detail=f"Provider rejected request: {error}")
+                raise NonRetryableProviderError(f"Provider rejected request: {error}")
             logger.error(f"{key_id} failed: {error}. Trying the next key.")
-            failed_attempts += 1
             continue
 
         latency_ms = max(1, int((time.perf_counter() - start_time) * 1000))
@@ -238,21 +258,14 @@ def open_stream(
     We wait for the FIRST chunk before picking a key: errors like 429 show up there,
     and once text has reached the user we can't switch to another key anymore.
     """
-    simulated_failures = parse_simulate_failure_header(simulate_header)
-    failed_attempts = 0
-    start_time = time.perf_counter()
-
-    for key in settings.get_key_pool():
-        key_id = key["key_id"]
-        if "*" in simulated_failures or key_id in simulated_failures:
-            logger.warning(f"Simulating failure for {key_id}")
-            failed_attempts += 1
-            continue
-
-        if not skip_cache and not simulated_failures:
+    if not skip_cache and not simulate_header:
+        for key in settings.get_key_pool():
             sync_cache_keys(key["model"], messages, temperature, max_tokens)
 
-        request = build_request(key, messages, simulated_failures, temperature, max_tokens, skip_cache)
+    for key, request, failed_attempts, start_time in iter_candidate_keys(
+        messages, simulate_header, temperature, max_tokens, skip_cache
+    ):
+        key_id = key["key_id"]
         request["stream"] = True
         try:
             logger.info(f"Streaming {key['model']} with {key_id}")
@@ -261,9 +274,8 @@ def open_stream(
         except Exception as error:
             if not is_failover_eligible(error):
                 logger.warning(f"{key_id} received non-retryable client error: {error}. Not failing over.")
-                raise HTTPException(status_code=400, detail=f"Provider rejected request: {error}")
+                raise NonRetryableProviderError(f"Provider rejected request: {error}")
             logger.error(f"{key_id} failed: {error}. Trying the next key.")
-            failed_attempts += 1
             continue
 
         return OpenStream(key_id, key["model"], stream, first_chunk, failed_attempts, start_time, temperature, max_tokens)

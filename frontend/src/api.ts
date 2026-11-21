@@ -1,10 +1,25 @@
 import { ChatMetadata, HealthStatus, SessionListResponse, CacheStatsResponse, HistoryResponse } from './types';
 import type { SendOptions } from './hooks/useChatSession';
 
-// Use VITE_API_URL if set; otherwise localhost in dev and the Render backend in production.
-const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+// Persistent client ID to guarantee session isolation and safe deletion scoping
+export function getClientId(): string {
+  if (typeof window === 'undefined') return 'server';
+  let id = localStorage.getItem('lyftr_client_id');
+  if (!id) {
+    id = 'c' + Math.random().toString(36).substring(2, 10);
+    try {
+      localStorage.setItem('lyftr_client_id', id);
+    } catch {
+      // storage blocked in private browsing
+    }
+  }
+  return id;
+}
+
+// Configurable API URL: VITE_API_URL if set; otherwise localhost in dev and empty string in production (handled by proxy/rewrites)
+const isLocal = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || (isLocal ? 'http://localhost:8000' : 'https://lyftr-ai-backend.onrender.com')
+  import.meta.env.VITE_API_URL || (isLocal ? 'http://localhost:8000' : '')
 ).replace(/\/+$/, '');
 
 // An Error that also remembers the HTTP status (the chat shows "Error (503): ...").
@@ -15,11 +30,10 @@ function httpError(status: number, detail: string) {
 }
 
 export class StreamCutoffError extends Error {
-  isStreamCutoff: boolean;
   constructor(message = 'The reply was cut off, please try again.') {
     super(message);
     this.name = 'StreamCutoffError';
-    this.isStreamCutoff = true;
+    Object.setPrototypeOf(this, StreamCutoffError.prototype);
   }
 }
 
@@ -32,7 +46,11 @@ async function errorFrom(res: Response) {
 
 // Small fetch wrapper: returns the JSON body, or throws when the response is not 2xx.
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has('X-Client-ID')) {
+    headers.set('X-Client-ID', getClientId());
+  }
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
   if (!res.ok) throw await errorFrom(res);
   return res.json() as Promise<T>;
 }
@@ -80,7 +98,10 @@ export async function streamChatMessage(
   options: SendOptions & { signal?: AbortSignal },
   onText: (text: string) => void
 ): Promise<ChatMetadata> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Client-ID': getClientId(),
+  };
   if (options.simulateRule?.trim()) {
     headers['X-Simulate-Failure'] = options.simulateRule.trim();
   }
@@ -99,7 +120,7 @@ export async function streamChatMessage(
     body: JSON.stringify(body),
     signal: options.signal,
   });
-  if (!res.ok) throw await errorFrom(res); // 422 / 503 come back as normal JSON errors
+  if (!res.ok) throw await errorFrom(res); // 400 / 422 / 503 come back as normal JSON errors
 
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();

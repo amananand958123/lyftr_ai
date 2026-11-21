@@ -4,7 +4,7 @@ services:
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
-    plan: free
+    plan: free # Note: Render free tier uses ephemeral disk; to enable persistent disk mounting, upgrade plan to starter
     healthCheckPath: /health
     disk:
       name: sqlite_data

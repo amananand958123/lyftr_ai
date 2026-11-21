@@ -144,3 +144,38 @@ def test_regenerate_no_duplicate_history(client):
     assert len(hist5["messages"]) == 4, f"Expected 4 messages, got {len(hist5['messages'])}"
     assert hist5["messages"][2]["content"] == "What is 3+3?"
     assert hist5["messages"][3]["role"] == "assistant"
+
+
+def test_client_scoping_and_forbidden_delete(client):
+    client_a = "clientAlpha"
+    client_b = "clientBeta"
+    sess_a = f"s-{client_a}-123"
+    sess_b = f"s-{client_b}-456"
+
+    # Create session for client A
+    r_a = client.post("/chat", headers={"X-Client-ID": client_a}, json={"session_id": sess_a, "message": "Hello from A"})
+    assert r_a.status_code == 200
+
+    # Create session for client B
+    r_b = client.post("/chat", headers={"X-Client-ID": client_b}, json={"session_id": sess_b, "message": "Hello from B"})
+    assert r_b.status_code == 200
+
+    # List sessions scoped to client A
+    list_a = client.get("/sessions", headers={"X-Client-ID": client_a}).json()
+    session_ids_a = [s["session_id"] for s in list_a["sessions"]]
+    assert sess_a in session_ids_a
+    assert sess_b not in session_ids_a
+
+    # Check first_message_preview
+    summary_a = next(s for s in list_a["sessions"] if s["session_id"] == sess_a)
+    assert summary_a["first_message_preview"] == "Hello from A"
+
+    # Client A cannot delete Client B's session (403 Forbidden)
+    del_forbidden = client.delete(f"/sessions/{sess_b}", headers={"X-Client-ID": client_a})
+    assert del_forbidden.status_code == 403
+    assert "cannot delete another client's session" in del_forbidden.json()["detail"]
+
+    # Client A can delete Client A's session
+    del_ok = client.delete(f"/sessions/{sess_a}", headers={"X-Client-ID": client_a})
+    assert del_ok.status_code == 200
+    assert del_ok.json()["deleted"] is True

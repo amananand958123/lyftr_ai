@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 
-from sqlalchemy import Column, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, Index, Integer, String, Text, func
 
 from app.database import Base
 
@@ -14,7 +14,7 @@ class Message(Base):
     role = Column(String(20), nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False)
     metadata_json = Column("metadata", Text, nullable=True)  # JSON text, only for assistant replies
-    created_at = Column(String(50), nullable=False)  # ISO-8601 timestamp
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     def get_metadata(self) -> Optional[dict]:
         """The metadata column as a dict (None for user messages)."""

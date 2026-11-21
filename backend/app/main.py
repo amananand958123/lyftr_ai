@@ -61,13 +61,14 @@ class RequestContextMiddleware:
 
 app.add_middleware(RequestContextMiddleware)
 
-# In-memory sliding window rate limiter: 120 reqs/min per client IP (Item 10)
+# In-memory sliding window rate limiter: 120 reqs/min per client IP with reverse-proxy support (Item 10)
 class RateLimitMiddleware:
     def __init__(self, app: ASGIApp, max_requests: int = 120, window_seconds: int = 60):
         self.app = app
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.client_hits: dict[str, list[float]] = defaultdict(list)
+        self._request_counter = 0
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         if scope["type"] != "http":
@@ -80,12 +81,27 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        client = scope.get("client")
-        client_ip = client[0] if client else "unknown"
+        # Extract client IP respecting reverse proxies (X-Forwarded-For)
+        headers = dict(scope.get("headers", []))
+        forwarded_for = headers.get(b"x-forwarded-for", b"").decode("utf-8")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client = scope.get("client")
+            client_ip = client[0] if client else "unknown"
+
         now = time.time()
         window_start = now - self.window_seconds
 
-        # Prune older entries
+        # Periodically prune stale IP buckets to prevent memory leak
+        self._request_counter += 1
+        if self._request_counter >= 100:
+            self._request_counter = 0
+            stale_keys = [k for k, timestamps in self.client_hits.items() if not timestamps or timestamps[-1] <= window_start]
+            for k in stale_keys:
+                del self.client_hits[k]
+
+        # Prune older entries for current client
         hits = [t for t in self.client_hits[client_ip] if t > window_start]
         if len(hits) >= self.max_requests:
             logger.warning(f"Rate limit exceeded for client {client_ip}")

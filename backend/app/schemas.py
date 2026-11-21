@@ -92,6 +92,7 @@ class HistoryResponse(BaseModel):
 class SessionSummary(BaseModel):
     session_id: str
     message_count: int
+    first_message_preview: Optional[str] = None
     last_message_preview: Optional[str] = None
     last_active_at: Optional[str] = None
 

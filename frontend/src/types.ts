@@ -29,6 +29,7 @@ export interface HealthStatus {
 export interface SessionSummary {
   session_id: string;
   message_count: number;
+  first_message_preview?: string | null;
   last_message_preview?: string | null;
   last_active_at?: string | null;
 }

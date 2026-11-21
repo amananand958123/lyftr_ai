@@ -18,6 +18,7 @@ const STARTER_PROMPTS = ['What is the capital of France?', 'Write a Python binar
 
 export function App() {
   const { isDark, toggleTheme } = useTheme();
+  const [inputText, setInputText] = useState('');
   const {
     sessionId,
     messages,
@@ -31,9 +32,12 @@ export function App() {
     stopStreaming,
     cumulativeTokens,
     latencyPoints,
-  } = useChatSession();
-
-  const [inputText, setInputText] = useState('');
+  } = useChatSession({
+    onAbort: (abortedText) => {
+      // Restore prompt into input text when streaming was aborted
+      setInputText(abortedText);
+    },
+  });
   const [systemPrompt, setSystemPrompt] = useState('');
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [showTuning, setShowTuning] = useState(false);
@@ -66,46 +70,12 @@ export function App() {
     }
   }, [messages, isLoading]);
 
-  // Ask the backend for /health now and then every 30 seconds.
-  // Pause polling when document.hidden to prevent draining Render free hours.
+  // Poll /health every 30s, pausing when tab is hidden to save Render resources (Item 41)
   useEffect(() => {
-    let intervalId: any = null;
-
-    const checkHealth = () => {
-      if (!document.hidden) {
-        fetchHealth().then(setHealth).catch(() => setHealth(null));
-      }
-    };
-
-    const startPolling = () => {
-      checkHealth();
-      if (!intervalId) {
-        intervalId = setInterval(checkHealth, 30000);
-      }
-    };
-
-    const stopPolling = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        startPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    const check = () => { if (!document.hidden) fetchHealth().then(setHealth).catch(() => setHealth(null)); };
+    check();
+    const id = setInterval(check, 30000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {

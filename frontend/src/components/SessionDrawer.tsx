@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SessionSummary } from '../types';
 import { fetchSessions, deleteSession } from '../api';
 
@@ -33,6 +33,48 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
   const [editTitleInput, setEditTitleInput] = useState('');
   const [totalSessions, setTotalSessions] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Focus trap for accessibility (Item 55)
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = drawerRef.current;
+    if (!el) return;
+
+    const focusables = el.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusables.length > 0) {
+      focusables[0].focus();
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const list = Array.from(focusables);
+      const first = list[0];
+      const last = list[list.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -132,6 +174,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
     return (
       s.session_id.toLowerCase().includes(q) ||
       customTitle.includes(q) ||
+      (s.first_message_preview || '').toLowerCase().includes(q) ||
       (s.last_message_preview || '').toLowerCase().includes(q)
     );
   });
@@ -144,8 +187,14 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
         onClick={onClose}
       />
 
-      {/* Drawer content */}
-      <div className="relative w-full max-w-sm bg-paper-2 border-l border-rule h-full flex flex-col shadow-2xl z-10 animate-apple-entrance">
+      {/* Drawer content with focus trap */}
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Stored Sessions Drawer"
+        className="relative w-full max-w-sm bg-paper-2 border-l border-rule h-full flex flex-col shadow-2xl z-10 animate-apple-entrance"
+      >
         <div className="p-4 border-b border-rule-subtle flex items-center justify-between">
           <div>
             <h3 className="font-display font-medium text-ink text-sm">Stored Sessions</h3>
@@ -179,7 +228,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
           ) : (
             filtered.map((s) => {
               const isActive = s.session_id === activeSessionId;
-              const title = sessionTitles[s.session_id] || s.last_message_preview || s.session_id;
+              const title = sessionTitles[s.session_id] || s.first_message_preview || s.last_message_preview || s.session_id;
               const isEditing = editingSessionId === s.session_id;
 
               return (

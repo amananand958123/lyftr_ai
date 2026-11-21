@@ -1,5 +1,6 @@
 """The /chat flow: load history -> ask the gateway -> save the turn -> return the reply."""
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Dict, Iterator, List, Optional
@@ -9,9 +10,17 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.gateway import complete_chat, open_stream, sync_cache_keys
+from app.gateway import (
+    AllProvidersUnavailableException,
+    NonRetryableProviderError,
+    complete_chat,
+    open_stream,
+    sync_cache_keys,
+)
 from app.repositories import message_repository
 from app.schemas import ChatMetadata, ChatResponse
+
+logger = logging.getLogger("lyftr.chat_service")
 
 
 MAX_HISTORY_MESSAGES = 20  # Sliding window keeps cost bounded and avoids token limit exhaustion
@@ -82,10 +91,15 @@ def process_chat(
 ) -> ChatResponse:
     conversation = build_conversation(db, session_id, message, system_prompt, regenerate=regenerate)
 
-    # If every key fails, return 503 and save nothing.
+    # If every key fails, return 503; if non-retryable client error, return 400; save nothing.
     try:
         result = complete_chat(conversation, simulate_header, temperature, max_tokens, skip_cache=regenerate)
-    except Exception:
+    except NonRetryableProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AllProvidersUnavailableException:
+        raise HTTPException(status_code=503, detail="all providers unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected chat failure: {e}")
         raise HTTPException(status_code=503, detail="all providers unavailable")
 
     metadata = ChatMetadata(
@@ -124,10 +138,16 @@ def stream_chat(
     """
     conversation = build_conversation(db, session_id, message, system_prompt, regenerate=regenerate)
 
-    # Pick a working key BEFORE streaming starts, so "all keys failed" is still a real HTTP 503.
+    # Pick a working key BEFORE streaming starts, so "all keys failed" is still a real HTTP 503,
+    # and deterministic client errors (e.g. 400 ContextWindowExceeded) return 400.
     try:
         opened = open_stream(conversation, simulate_header, temperature, max_tokens, skip_cache=regenerate)
-    except Exception:
+    except NonRetryableProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AllProvidersUnavailableException:
+        raise HTTPException(status_code=503, detail="all providers unavailable")
+    except Exception as e:
+        logger.exception(f"Unexpected stream failure: {e}")
         raise HTTPException(status_code=503, detail="all providers unavailable")
 
     def events():

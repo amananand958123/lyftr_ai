@@ -11,9 +11,9 @@ FROM python:3.11-slim AS runner
 
 WORKDIR /app
 
-# Create non-root user and persistent storage directory
+# Create non-root user and persistent storage directory with permissive permissions
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /data && chown -R appuser:appuser /data /app
+    mkdir -p /data && chown -R appuser:appuser /data /app && chmod -R 777 /data
 
 # Copy installed Python packages from builder
 COPY --from=builder /root/.local /home/appuser/.local
@@ -30,4 +30,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
   CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
