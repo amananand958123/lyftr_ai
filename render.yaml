@@ -14,6 +14,6 @@ services:
       - key: DEFAULT_MODEL
         value: gemini/gemini-2.0-flash
       - key: ALLOWED_ORIGINS
-        value: https://*.vercel.app,http://localhost:3000
+        value: https://lyftr-chat.vercel.app,http://localhost:3000,http://127.0.0.1:3000
       - key: LLM_API_KEYS
         sync: false

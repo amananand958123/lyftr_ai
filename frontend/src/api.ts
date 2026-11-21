@@ -1,6 +1,11 @@
 import { ChatApiResponse, HealthStatus, SessionListResponse, CacheStatsResponse } from './types';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://lyftr-ai-backend.onrender.com'
+    : 'http://localhost:8000')
+).replace(/\/+$/, '');
 
 export async function fetchHealth(): Promise<HealthStatus> {
   const res = await fetch(`${API_BASE_URL}/health`);
