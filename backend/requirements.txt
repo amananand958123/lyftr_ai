@@ -4,3 +4,4 @@ pydantic==2.14.4
 pydantic-settings==2.16.3
 sqlalchemy==2.0.35
 litellm==1.110.2
+orjson==3.13.0
