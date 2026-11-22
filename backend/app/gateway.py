@@ -11,9 +11,19 @@ LiteLLM's in-memory cache sits in front of this, so asking the exact same
 conversation twice returns the saved answer instead of calling the provider.
 """
 import logging
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Tuple
+from unittest.mock import MagicMock
+
+# Guard against optional dependencies imported by LiteLLM internal handlers
+for _mod in ("soundfile",):
+    if _mod not in sys.modules:
+        try:
+            __import__(_mod)
+        except ImportError:
+            sys.modules[_mod] = MagicMock()
 
 import litellm
 
@@ -82,7 +92,7 @@ def is_failover_eligible(error: Exception) -> bool:
     True only for transient provider failures (rate limits, 5xx errors, timeouts, network drops).
     Deterministic client errors like 400 Bad Request or ContextWindowExceeded should not fail over.
     """
-    if isinstance(error, (litellm.exceptions.ContextWindowExceededError,)):
+    if isinstance(error, (litellm.exceptions.ContextWindowExceededError, ModuleNotFoundError, ImportError)):
         return False
     status_code = getattr(error, "status_code", None)
     if status_code == 400:
