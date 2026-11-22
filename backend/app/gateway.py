@@ -23,6 +23,8 @@ from app.config import settings
 
 logger = logging.getLogger("lyftr.gateway")
 
+LAST_GATEWAY_ERRORS: List[Dict[str, Any]] = []
+
 # Turn on LiteLLM's built-in in-memory cache once, when the app starts.
 litellm.enable_cache(type="local", max_messages=None)
 
@@ -197,6 +199,15 @@ def complete_chat(
             if not skip_cache and not simulate_header:
                 sync_cache_keys(key["model"], messages, temperature, max_tokens)
         except Exception as error:
+            LAST_GATEWAY_ERRORS.append({
+                "time": time.time(),
+                "key_id": key_id,
+                "model": key["model"],
+                "error_type": type(error).__name__,
+                "error": str(error)[:300],
+            })
+            if len(LAST_GATEWAY_ERRORS) > 50:
+                LAST_GATEWAY_ERRORS.pop(0)
             if not is_failover_eligible(error):
                 logger.warning(f"{key_id} received non-retryable client error: {error}. Not failing over.")
                 raise NonRetryableProviderError(f"Provider rejected request: {error}")
@@ -272,6 +283,15 @@ def open_stream(
             stream = litellm.completion(**request)
             first_chunk = next(stream)
         except Exception as error:
+            LAST_GATEWAY_ERRORS.append({
+                "time": time.time(),
+                "key_id": key_id,
+                "model": key["model"],
+                "error_type": type(error).__name__,
+                "error": str(error)[:300],
+            })
+            if len(LAST_GATEWAY_ERRORS) > 50:
+                LAST_GATEWAY_ERRORS.pop(0)
             if not is_failover_eligible(error):
                 logger.warning(f"{key_id} received non-retryable client error: {error}. Not failing over.")
                 raise NonRetryableProviderError(f"Provider rejected request: {error}")
